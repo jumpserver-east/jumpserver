@@ -1,0 +1,53 @@
+import json
+
+from django.core.management.base import BaseCommand, CommandError
+
+from common.sdk.gm.piico import run_piico_self_test, summarize_piico_self_test
+
+
+class Command(BaseCommand):
+    help = "Check Piico device health"
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--driver-path",
+            default=None,
+            help="Override PIICO driver path",
+        )
+        parser.add_argument(
+            "--tests",
+            default=None,
+            help="Comma-separated self-test names, for example: random,sm3,sm4_ecb",
+        )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Print structured JSON result",
+        )
+
+    def handle(self, *args, **options):
+        test_names = None
+        if options["tests"]:
+            test_names = tuple(
+                name.strip() for name in options["tests"].split(",") if name.strip()
+            )
+
+        result = run_piico_self_test(
+            driver_path=options["driver_path"],
+            test_names=test_names,
+        )
+
+        if options["json"]:
+            self.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            self.stdout.write(summarize_piico_self_test(result))
+            for item in result.get("tests", []):
+                status = "OK" if item.get("ok") else "FAILED"
+                if item.get("ok"):
+                    payload = json.dumps(item.get("details", {}), ensure_ascii=False, sort_keys=True)
+                else:
+                    payload = item.get("error", "")
+                self.stdout.write(f"[{status}] {item.get('name')} ({item.get('elapsed_ms', 0)}ms) {payload}")
+
+        if not result.get("ok"):
+            raise CommandError("Piico self-test failed")
