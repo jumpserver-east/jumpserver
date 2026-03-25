@@ -172,15 +172,20 @@ DEFAULT_PIICO_SELF_TESTS = tuple(PIICO_SELF_TEST_CASES.keys())
 
 
 def _open_device(driver_path=None):
-    from . import open_piico_device, resolve_piico_driver_path
+    from django.conf import settings
 
-    resolved_driver_path = resolve_piico_driver_path(driver_path)
-    device = open_piico_device(driver_path=resolved_driver_path)
-    return device, resolved_driver_path
+    from . import DEFAULT_DRIVER_PATH, open_piico_device
+
+    if driver_path is None:
+        driver_path = settings.PIICO_DRIVER_PATH or DEFAULT_DRIVER_PATH
+    device = open_piico_device(driver_path=driver_path)
+    return device, driver_path
 
 
 def run_piico_self_test(driver_path=None, test_names=None):
-    from . import resolve_piico_driver_path
+    from django.conf import settings
+
+    from . import DEFAULT_DRIVER_PATH
 
     selected_test_names = tuple(test_names or DEFAULT_PIICO_SELF_TESTS)
     invalid_test_names = [name for name in selected_test_names if name not in PIICO_SELF_TEST_CASES]
@@ -190,7 +195,7 @@ def run_piico_self_test(driver_path=None, test_names=None):
     started = time.monotonic()
     result = {
         "ok": False,
-        "driver_path": resolve_piico_driver_path(driver_path),
+        "driver_path": driver_path or settings.PIICO_DRIVER_PATH or DEFAULT_DRIVER_PATH,
         "tests": [],
     }
     device = None

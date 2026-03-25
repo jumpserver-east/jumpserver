@@ -14,7 +14,6 @@ __all__ = [
     "DEFAULT_PIICO_SELF_TESTS",
     "Device",
     "open_piico_device",
-    "resolve_piico_driver_path",
     "run_piico_self_test",
     "summarize_piico_self_test",
 ]
