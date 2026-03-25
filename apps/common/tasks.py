@@ -5,7 +5,9 @@ from django.conf import settings
 from django.core.mail import send_mail, EmailMultiAlternatives, get_connection
 from django.utils.translation import gettext_lazy as _
 
+from common.sdk.gm.piico import run_piico_self_test, summarize_piico_self_test
 from common.storage import jms_storage
+from ops.celery.decorator import after_app_ready_start, register_as_period_task
 from users.models import User
 from .utils import get_logger
 
@@ -118,3 +120,38 @@ def upload_backup_to_obj_storage(recipient, upload_file):
         os.remove(upload_file)
     except Exception as e:
         print(f'remove upload file : {upload_file} error: {e}')
+
+
+@shared_task(
+    verbose_name=_('密码模块检测'),
+    description=_(
+        "密码模块检测"
+    )
+)
+@after_app_ready_start
+@register_as_period_task(interval=3600 * 12)
+def check_piico_self_test():
+    if not getattr(settings, 'GMSSL_ENABLED', False):
+        logger.info('Skip Piico self-test, GMSSL is disabled')
+        return {
+            'ok': True,
+            'skipped': True,
+            'reason': 'GMSSL disabled',
+        }
+
+    if not getattr(settings, 'PIICO_DEVICE_ENABLE', False):
+        logger.info('Skip Piico self-test, Piico device is disabled')
+        return {
+            'ok': True,
+            'skipped': True,
+            'reason': 'PIICO device disabled',
+        }
+
+    result = run_piico_self_test()
+    summary = summarize_piico_self_test(result)
+    if result.get('ok'):
+        logger.info(summary)
+        return result
+
+    logger.error(summary)
+    raise RuntimeError(summary)
