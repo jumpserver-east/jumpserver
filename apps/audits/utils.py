@@ -4,7 +4,7 @@ from itertools import chain
 
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Value, CharField
 from django.db.models.functions import Concat
 from django.utils import translation
@@ -13,6 +13,7 @@ from common.db.fields import RelatedManager
 from common.utils import validate_ip, get_ip_city, get_logger
 from common.utils.timezone import as_current_tz
 from .const import DEFAULT_CITY, ActivityChoices as LogChoice
+from .backends import get_operate_log_storage
 from .handler import create_or_update_operate_log
 from .models import ActivityLog
 
@@ -30,6 +31,55 @@ def write_login_log(*args, **kwargs):
         city = get_ip_city(ip) or DEFAULT_CITY
     kwargs.update({'ip': ip, 'city': city})
     return UserLoginLog.objects.create(**kwargs)
+
+
+def get_audit_org_id(user=None):
+    from orgs.models import Organization
+    from orgs.utils import get_current_org_id
+
+    current_id = get_current_org_id()
+    if current_id and str(current_id) != Organization.DEFAULT_ID:
+        return str(current_id)
+
+    if user is not None:
+        org = user.orgs.exclude(id=Organization.SYSTEM_ID).distinct().first()
+        if org:
+            return str(org.id)
+
+    return str(current_id or Organization.DEFAULT_ID)
+
+
+def write_operate_log(*, user, action, resource_type, resource,
+                      remote_addr='', resource_id='', org_id=None,
+                      before=None, after=None):
+    if user is None:
+        return
+
+    if org_id is None:
+        org_id = get_audit_org_id(user)
+
+    data = {
+        'user': str(user),
+        'action': action,
+        'resource_type': str(resource_type),
+        'resource': str(resource),
+        'resource_id': str(resource_id or ''),
+        'remote_addr': remote_addr,
+        'org_id': org_id,
+        'before': before or {},
+        'after': after or {},
+    }
+    with transaction.atomic():
+        client = get_operate_log_storage()
+        if client.ping(timeout=1):
+            pass
+        else:
+            logger.info('Switch default operate log storage save.')
+            client = get_operate_log_storage(default=True)
+        try:
+            client.save(**data)
+        except Exception as e:
+            logger.error('An error occurred saving OperateLog. Error: %s, Data: %s', e, data)
 
 
 def _get_instance_field_value(

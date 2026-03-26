@@ -53,6 +53,7 @@
     </form>
     <script>
         const token = new mToken("mTokenPlugin")
+        const pinLogUrl = "/api/v1/users/ukeys/pin-log/"
 
         function enumDevice() {
             let ret = 0
@@ -73,6 +74,20 @@
             return deviceName
         }
 
+        function reportPinVerifyResult(status, device, errorCode) {
+            $.ajax({
+                url: pinLogUrl,
+                type: 'POST',
+                data: JSON.stringify({
+                    status: status,
+                    serial: Array.isArray(device) ? device[0] : device,
+                    reason: status === 'failed' ? 'pin_verify_failed' : '',
+                    error_code: String(errorCode || '')
+                }),
+                contentType: 'application/json; charset=utf-8'
+            })
+        }
+
         function verify_PIN() {
             const device = enumDevice()
             if (device == null) {
@@ -81,9 +96,12 @@
             const pin = $('#ukey-pin').val()
             let ret = token.SOF_Login(pin)
             if (ret !== 0) {
-                alert("{% trans 'Failed to verify user password, error code: ' %}" + token.SOF_GetLastError())
+                const errorCode = token.SOF_GetLastError()
+                reportPinVerifyResult('failed', device, errorCode)
+                alert("{% trans 'Failed to verify user password, error code: ' %}" + errorCode)
                 return
             }
+            reportPinVerifyResult('success', device)
             let rb = get_Random()
             let container = token.SOF_EnumCertContiner().split("||");
             if (container.length === 0) {

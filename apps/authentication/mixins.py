@@ -25,6 +25,8 @@ from werkzeug.local import Local
 
 from acls.models import LoginACL
 from apps.jumpserver.settings.auth import AUTHENTICATION_BACKENDS_THIRD_PARTY
+from audits.const import ActionChoices
+from audits.utils import write_operate_log
 from common.sdk.gm import piico
 from common.sdk.gm.piico.exception import PiicoError
 from common.utils import get_request_ip_or_data, get_request_ip, get_logger, bulk_get, FlashMessageUtil
@@ -650,24 +652,81 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
                 raise errors.UKeyUnsetError()
 
     def check_ukey_auth(self, user, ukey_token):
+        ip = self.get_request_ip()
         parts = ukey_token.split("$")
         if len(parts) != 3:
+            write_operate_log(
+                user=user,
+                action=ActionChoices.login,
+                resource_type='UKey',
+                resource=user.username,
+                resource_id=user.id,
+                remote_addr=ip,
+                after={
+                    'Stage': 'UKey auth',
+                    'Status': 'failed',
+                    'Reason': 'invalid_token',
+                }
+            )
             raise errors.LoginCheckKeyError()
         ukey_serial, digest, sign = parts
 
         user_key = user.user_usb_key.filter(u_key_serial=ukey_serial).first()
         if not user_key:
+            after = {
+                'Stage': 'UKey auth',
+                'Status': 'failed',
+                'Reason': 'ukey_unset',
+            }
+            if ukey_serial:
+                after['Serial'] = ukey_serial
+            write_operate_log(
+                user=user,
+                action=ActionChoices.login,
+                resource_type='UKey',
+                resource=ukey_serial or user.username,
+                resource_id=user.id,
+                remote_addr=ip,
+                after=after
+            )
             raise errors.UKeyUnsetError()
 
         try:
             device = piico.open_piico_device()
             device.verify_sign(user_key.u_key_public_key, digest, sign)
         except PiicoError as e:
-            logger.error("verify_sign:{}".format(e))
+            write_operate_log(
+                user=user,
+                action=ActionChoices.login,
+                resource_type='UKey',
+                resource=ukey_serial or user.username,
+                resource_id=user.id,
+                remote_addr=ip,
+                after=dict(
+                    Stage='UKey auth',
+                    Status='failed',
+                    Serial=ukey_serial,
+                    Reason='verify_sign',
+                    Error=str(e),
+                )
+            )
             raise errors.LoginCheckKeyError()
 
         self.request.session["auth_ukey"] = 1
         self.request.session["auth_ukey_username"] = user.username
+        write_operate_log(
+            user=user,
+            action=ActionChoices.login,
+            resource_type='UKey',
+            resource=ukey_serial or user.username,
+            resource_id=user.id,
+            remote_addr=ip,
+            after={
+                'Stage': 'UKey auth',
+                'Status': 'success',
+                'Serial': ukey_serial,
+            }
+        )
         return True
 
     def check_user_auth(self, valid_data=None):
