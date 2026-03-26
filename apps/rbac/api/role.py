@@ -69,10 +69,26 @@ class RoleViewSet(JMSModelViewSet):
         queryset = list(queryset.exclude(id__in=matched))
         return queryset + builtins
 
+    def get_hidden_role_ids(self):
+        return set()
+
+    def filter_hidden_roles(self, queryset):
+        if self.action != 'list':
+            return queryset
+
+        hidden_role_ids = self.get_hidden_role_ids()
+        if not hidden_role_ids:
+            return queryset
+
+        if isinstance(queryset, list):
+            return [role for role in queryset if str(role.id) not in hidden_role_ids]
+        return queryset.exclude(id__in=hidden_role_ids)
+
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)
         queryset = queryset.order_by(*self.ordering)
         queryset = self.filter_builtins(queryset)
+        queryset = self.filter_hidden_roles(queryset)
         return queryset
 
     def set_users_amount(self, queryset):
@@ -120,6 +136,9 @@ class SystemRoleViewSet(RoleViewSet):
     def get_queryset(self):
         qs = super().get_queryset().filter(scope='system')
         return qs
+
+    def get_hidden_role_ids(self):
+        return {Role.BuiltinRole.system_component.id}
 
 
 class OrgRoleViewSet(RoleViewSet):
