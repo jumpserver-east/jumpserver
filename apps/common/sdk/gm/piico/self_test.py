@@ -295,9 +295,9 @@ def _format_test_result_line(item):
 
 def format_piico_self_test_report_lines(result):
     if result.get("skipped"):
-        overall_line = "加密模块自检已跳过"
+        overall_line = "密码模块自检已跳过"
     else:
-        overall_line = "加密模块自检结果: 正常" if result.get("ok") else "加密模块自检结果: 异常"
+        overall_line = "密码模块自检结果: 正常" if result.get("ok") else "密码模块自检结果: 异常"
 
     lines = [overall_line, summarize_piico_self_test(result)]
 

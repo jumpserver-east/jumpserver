@@ -36,7 +36,7 @@ class Command(BaseCommand):
             )
 
         if not options["json"]:
-            self.stdout.write("加密模块开始自检")
+            self.stdout.write("密码模块开始自检")
 
         result = run_piico_self_test(
             driver_path=options["driver_path"],
