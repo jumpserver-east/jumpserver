@@ -135,15 +135,18 @@ def upload_backup_to_obj_storage(recipient, upload_file):
 @after_app_ready_start
 @register_as_period_task(interval=3600 * 12)
 def check_piico_self_test():
+    def output_report(result):
+        print('加密模块开始自检')
+        for line in format_piico_self_test_report_lines(result):
+            print(line)
+
     if not getattr(settings, 'GMSSL_ENABLED', False):
         result = {
             'ok': True,
             'skipped': True,
             'reason': 'GMSSL disabled',
         }
-        logger.info('加密模块开始自检')
-        for line in format_piico_self_test_report_lines(result):
-            logger.info(line)
+        output_report(result)
         return f"加密模块自检跳过: {summarize_piico_self_test(result)}"
 
     if not getattr(settings, 'PIICO_DEVICE_ENABLE', False):
@@ -152,17 +155,12 @@ def check_piico_self_test():
             'skipped': True,
             'reason': 'PIICO device disabled',
         }
-        logger.info('加密模块开始自检')
-        for line in format_piico_self_test_report_lines(result):
-            logger.info(line)
+        output_report(result)
         return f"加密模块自检跳过: {summarize_piico_self_test(result)}"
 
-    logger.info('加密模块开始自检')
     result = run_piico_self_test()
     summary = summarize_piico_self_test(result)
-    log = logger.info if result.get('ok') else logger.error
-    for line in format_piico_self_test_report_lines(result):
-        log(line)
+    output_report(result)
     if result.get('ok'):
         return f"加密模块自检完成: {summary}"
 
