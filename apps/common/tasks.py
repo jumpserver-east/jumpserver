@@ -5,7 +5,11 @@ from django.conf import settings
 from django.core.mail import send_mail, EmailMultiAlternatives, get_connection
 from django.utils.translation import gettext_lazy as _
 
-from common.sdk.gm.piico import run_piico_self_test, summarize_piico_self_test
+from common.sdk.gm.piico import (
+    format_piico_self_test_report_lines,
+    run_piico_self_test,
+    summarize_piico_self_test,
+)
 from common.storage import jms_storage
 from ops.celery.decorator import after_app_ready_start, register_as_period_task
 from users.models import User
@@ -132,26 +136,34 @@ def upload_backup_to_obj_storage(recipient, upload_file):
 @register_as_period_task(interval=3600 * 12)
 def check_piico_self_test():
     if not getattr(settings, 'GMSSL_ENABLED', False):
-        logger.info('Skip Piico self-test, GMSSL is disabled')
-        return {
+        result = {
             'ok': True,
             'skipped': True,
             'reason': 'GMSSL disabled',
         }
+        logger.info('加密模块开始自检')
+        for line in format_piico_self_test_report_lines(result):
+            logger.info(line)
+        return f"加密模块自检跳过: {summarize_piico_self_test(result)}"
 
     if not getattr(settings, 'PIICO_DEVICE_ENABLE', False):
-        logger.info('Skip Piico self-test, Piico device is disabled')
-        return {
+        result = {
             'ok': True,
             'skipped': True,
             'reason': 'PIICO device disabled',
         }
+        logger.info('加密模块开始自检')
+        for line in format_piico_self_test_report_lines(result):
+            logger.info(line)
+        return f"加密模块自检跳过: {summarize_piico_self_test(result)}"
 
+    logger.info('加密模块开始自检')
     result = run_piico_self_test()
     summary = summarize_piico_self_test(result)
+    log = logger.info if result.get('ok') else logger.error
+    for line in format_piico_self_test_report_lines(result):
+        log(line)
     if result.get('ok'):
-        logger.info(summary)
-        return result
+        return f"加密模块自检完成: {summary}"
 
-    logger.error(summary)
     raise RuntimeError(summary)

@@ -3,6 +3,7 @@ from django.conf import settings
 from .device import Device
 from .self_test import (
     DEFAULT_PIICO_SELF_TESTS,
+    format_piico_self_test_report_lines,
     run_piico_self_test,
     summarize_piico_self_test,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "DEFAULT_DRIVER_PATH",
     "DEFAULT_PIICO_SELF_TESTS",
     "Device",
+    "format_piico_self_test_report_lines",
     "open_piico_device",
     "run_piico_self_test",
     "summarize_piico_self_test",

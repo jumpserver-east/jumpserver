@@ -168,6 +168,14 @@ PIICO_SELF_TEST_CASES = {
     "sm4_cbc": _run_sm4_cbc_test,
 }
 
+PIICO_SELF_TEST_LABELS = {
+    "random": "随机数功能",
+    "sm3": "SM3 算法功能",
+    "sm2_encrypt_decrypt": "SM2 算法功能",
+    "sm4_ecb": "SM4 ECB 算法功能",
+    "sm4_cbc": "SM4 CBC 算法功能",
+}
+
 DEFAULT_PIICO_SELF_TESTS = tuple(PIICO_SELF_TEST_CASES.keys())
 
 
@@ -239,6 +247,8 @@ def run_piico_self_test(driver_path=None, test_names=None):
 def summarize_piico_self_test(result):
     if result.get("error"):
         return f"Piico self-test failed: {result['error']}"
+    if result.get("skipped"):
+        return f"Piico self-test skipped: {result.get('reason', 'skipped')}"
 
     failed_items = [
         f"{item['name']}={item.get('error', 'failed')}"
@@ -252,3 +262,59 @@ def summarize_piico_self_test(result):
     if result.get("close_error"):
         summary = f"{summary}; close={result['close_error']}"
     return summary
+
+
+def _stringify_details(details):
+    if not details:
+        return ""
+    return ", ".join(
+        f"{key}={details[key]}"
+        for key in sorted(details)
+    )
+
+
+def _get_test_label(name):
+    return PIICO_SELF_TEST_LABELS.get(name, name)
+
+
+def _format_test_result_line(item):
+    label = _get_test_label(item.get("name"))
+    status = "正常" if item.get("ok") else "异常"
+    line = f"{label}{status}"
+    elapsed_ms = item.get("elapsed_ms", 0)
+    if elapsed_ms >= 0:
+        line = f"{line} ({elapsed_ms}ms)"
+    if item.get("ok"):
+        details = _stringify_details(item.get("details", {}))
+        if details:
+            line = f"{line} {details}"
+    elif item.get("error"):
+        line = f"{line}: {item['error']}"
+    return line
+
+
+def format_piico_self_test_report_lines(result):
+    if result.get("skipped"):
+        overall_line = "加密模块自检已跳过"
+    else:
+        overall_line = "加密模块自检结果: 正常" if result.get("ok") else "加密模块自检结果: 异常"
+
+    lines = [overall_line, summarize_piico_self_test(result)]
+
+    driver_path = result.get("driver_path")
+    if driver_path:
+        lines.append(f"驱动路径: {driver_path}")
+
+    if result.get("skipped"):
+        lines.append(f"跳过原因: {result.get('reason', 'skipped')}")
+
+    if result.get("error"):
+        lines.append(f"错误信息: {result['error']}")
+
+    for item in result.get("tests", []):
+        lines.append(_format_test_result_line(item))
+
+    if result.get("close_error"):
+        lines.append(f"关闭设备异常: {result['close_error']}")
+
+    return lines

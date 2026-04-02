@@ -2,7 +2,10 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from common.sdk.gm.piico import run_piico_self_test, summarize_piico_self_test
+from common.sdk.gm.piico import (
+    format_piico_self_test_report_lines,
+    run_piico_self_test,
+)
 
 
 class Command(BaseCommand):
@@ -32,6 +35,9 @@ class Command(BaseCommand):
                 name.strip() for name in options["tests"].split(",") if name.strip()
             )
 
+        if not options["json"]:
+            self.stdout.write("加密模块开始自检")
+
         result = run_piico_self_test(
             driver_path=options["driver_path"],
             test_names=test_names,
@@ -40,14 +46,8 @@ class Command(BaseCommand):
         if options["json"]:
             self.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         else:
-            self.stdout.write(summarize_piico_self_test(result))
-            for item in result.get("tests", []):
-                status = "OK" if item.get("ok") else "FAILED"
-                if item.get("ok"):
-                    payload = json.dumps(item.get("details", {}), ensure_ascii=False, sort_keys=True)
-                else:
-                    payload = item.get("error", "")
-                self.stdout.write(f"[{status}] {item.get('name')} ({item.get('elapsed_ms', 0)}ms) {payload}")
+            for line in format_piico_self_test_report_lines(result):
+                self.stdout.write(line)
 
         if not result.get("ok"):
             raise CommandError("Piico self-test failed")
