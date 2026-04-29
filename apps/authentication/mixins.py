@@ -334,6 +334,11 @@ class MFAMixin:
         if self.request.session.get('auth_mfa') and \
                 self.request.session.get('auth_mfa_username') == user.username:
             return
+
+        if settings.SECURITY_MFA_BY_USBKEY and not user.user_usb_key.exists():
+            bind_url = reverse('authentication:ukey-bind', kwargs={'user_id': str(user.id)})
+            raise errors.MFAUnsetError(bind_url, user, self.request)
+
         if not user.mfa_enabled:
             return
 
