@@ -11843,6 +11843,18 @@ msgstr "綁定 USBKey 以啟用"
 msgid "Unbind USBKey to disable"
 msgstr "解除綁定 USBKey 以停用"
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr "停用 USBKey"
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr "USBKey 停用成功"
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr "USBKey 停用成功，返回登入頁面"
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr "USB Key 綁定"

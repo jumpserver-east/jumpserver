@@ -6,6 +6,7 @@ from urllib.parse import unquote
 
 from django.conf import settings
 from django.core.cache import cache
+from django.shortcuts import reverse
 from django.utils.translation import gettext_lazy as _
 
 from common.sdk.gm.soft_ukey import verify_usbkey_sm2_data
@@ -95,16 +96,19 @@ class MFAUSBKey(BaseMFA):
         return settings.SECURITY_MFA_BY_USBKEY
 
     def get_enable_url(self) -> str:
-        return '/ui/#/profile/index'
+        if not self.is_authenticated():
+            return '/ui/#/profile/index'
+        return reverse('authentication:ukey-bind', kwargs={'user_id': str(self.user.id)})
 
     def get_disable_url(self) -> str:
-        return '/ui/#/profile/index'
+        return reverse('authentication:user-ukey-disable')
 
     def disable(self):
-        pass
+        assert self.is_authenticated()
+        self.user.user_usb_key.all().delete()
 
     def can_disable(self) -> bool:
-        return False
+        return True
 
     @staticmethod
     def help_text_of_enable():

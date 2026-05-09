@@ -12143,6 +12143,18 @@ msgstr "USB 키를 바인딩하여 활성화"
 msgid "Unbind USBKey to disable"
 msgstr "USB 키 바인딩을 해제하여 비활성화"
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr "USB 키 비활성화"
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr "USB 키 비활성화 성공"
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr "USB 키 비활성화 성공, 로그인 페이지로 돌아갑니다"
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr "USB 키 바인딩"

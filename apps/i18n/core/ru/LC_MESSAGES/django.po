@@ -12301,6 +12301,18 @@ msgstr "Привяжите USB-ключ для включения"
 msgid "Unbind USBKey to disable"
 msgstr "Отвяжите USB-ключ для отключения"
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr "Отключить USB-ключ"
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr "USB-ключ успешно отключен"
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr "USB-ключ успешно отключен, возврат на страницу входа"
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr "Привязка USB-ключа"

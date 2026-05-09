@@ -74,6 +74,8 @@ urlpatterns = [
     path('profile/otp/enable/bind/', users_view.UserOtpEnableBindView.as_view(), name='user-otp-enable-bind'),
     path('profile/otp/disable/', users_view.UserOtpDisableView.as_view(),
          name='user-otp-disable'),
+    path('profile/ukey/disable/', views.UserUKeyDisableView.as_view(),
+         name='user-ukey-disable'),
 
     path('profile/face/enable/', users_view.UserFaceEnableView.as_view(), name='user-face-enable'),
     path('profile/face/disable/', users_view.UserFaceDisableView.as_view(), name='user-face-disable'),

@@ -229,6 +229,7 @@ class UserResetMFAApi(UserQuerysetMixin, generics.RetrieveAPIView):
         for backend in backends.values():
             if backend.can_disable():
                 backend.disable()
+        user.user_usb_key.all().delete()
 
         ResetMFAMsg(user).publish_async()
         return Response({"msg": "success"})

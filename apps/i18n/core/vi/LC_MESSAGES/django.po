@@ -12322,6 +12322,18 @@ msgstr "Liên kết USB Key để bật"
 msgid "Unbind USBKey to disable"
 msgstr "Hủy liên kết USB Key để tắt"
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr "Tắt USB Key"
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr "Tắt USB Key thành công"
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr "Tắt USB Key thành công, quay lại trang đăng nhập"
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr "Liên kết USB Key"

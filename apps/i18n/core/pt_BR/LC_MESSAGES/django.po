@@ -12273,6 +12273,18 @@ msgstr "Vincule a chave USB para ativar"
 msgid "Unbind USBKey to disable"
 msgstr "Desvincule a chave USB para desativar"
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr "Desativar chave USB"
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr "Chave USB desativada com sucesso"
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr "Chave USB desativada com sucesso, retornar à página de login"
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr "Vincular chave USB"

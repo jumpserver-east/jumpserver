@@ -11579,6 +11579,18 @@ msgstr ""
 msgid "Unbind USBKey to disable"
 msgstr ""
 
+#: authentication/views/ukey.py:54
+msgid "Disable USBKey"
+msgstr ""
+
+#: authentication/views/ukey.py:61
+msgid "USBKey disable success"
+msgstr ""
+
+#: authentication/views/ukey.py:62
+msgid "USBKey disable success, return login page"
+msgstr ""
+
 #: authentication/templates/authentication/bind_ukey.html:19
 msgid "USB Key Bind"
 msgstr ""
