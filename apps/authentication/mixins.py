@@ -334,12 +334,12 @@ class MFAMixin:
                 self.request.session.get('auth_mfa_username') == user.username:
             return
 
+        if not user.mfa_enabled:
+            return
+
         if settings.SECURITY_MFA_BY_USBKEY and not user.active_mfa_backends:
             bind_url = reverse('authentication:ukey-bind', kwargs={'user_id': str(user.id)})
             raise errors.MFAUnsetError(bind_url, user, self.request)
-
-        if not user.mfa_enabled:
-            return
 
         active_mfa_names = user.active_mfa_backends_mapper.keys()
         raise errors.MFARequiredError(mfa_types=tuple(active_mfa_names))
