@@ -12243,3 +12243,119 @@ msgstr "Licença inválida"
 
 #~ msgid "Task not started"
 #~ msgstr "A missão ainda não começou"
+
+# USB Key MFA
+#: authentication/const.py:41
+msgid "USBKey"
+msgstr "Chave USB"
+
+#: authentication/mfa/usbkey.py:15
+msgid "USBKey verification failed"
+msgstr "Falha na verificação da chave USB"
+
+#: authentication/mfa/usbkey.py:16
+msgid "USBKey challenge expired"
+msgstr "O desafio da chave USB expirou"
+
+#: authentication/mfa/usbkey.py:17
+msgid "USBKey unset"
+msgstr "Chave USB não configurada"
+
+#: authentication/mfa/usbkey.py:23
+msgid "USBKey signature payload"
+msgstr "Payload de assinatura da chave USB"
+
+#: authentication/mfa/usbkey.py:111
+msgid "Bind USBKey to enable"
+msgstr "Vincule a chave USB para ativar"
+
+#: authentication/mfa/usbkey.py:115
+msgid "Unbind USBKey to disable"
+msgstr "Desvincule a chave USB para desativar"
+
+#: authentication/templates/authentication/bind_ukey.html:19
+msgid "USB Key Bind"
+msgstr "Vincular chave USB"
+
+#: authentication/templates/authentication/bind_ukey.html:30
+#: users/models/ukey.py:18
+msgid "USB Key Serial"
+msgstr "Número de série da chave USB"
+
+#: authentication/templates/authentication/bind_ukey.html:36
+#: users/models/ukey.py:21
+#: users/serializers/ukey.py:9
+msgid "USB Key Public Key"
+msgstr "Chave pública da chave USB"
+
+#: authentication/templates/authentication/bind_ukey.html:40
+msgid "Click to get USB Key information"
+msgstr "Clique para obter informações da chave USB"
+
+#: authentication/templates/authentication/bind_ukey.html:43
+msgid "Remove USB Key binding"
+msgstr "Remover vinculação da chave USB"
+
+#: authentication/templates/authentication/bind_ukey.html:58
+#: templates/_mfa_login_field.html:113
+msgid "Failed to load plugin, error code: "
+msgstr "Falha ao carregar o plugin, código de erro: "
+
+#: authentication/templates/authentication/bind_ukey.html:65
+#: templates/_mfa_login_field.html:123
+msgid "Failed to bind application, please check if the Key is initialized, error code: "
+msgstr "Falha ao vincular o aplicativo, verifique se a Key foi inicializada, código de erro: "
+
+#: authentication/templates/authentication/bind_ukey.html:68
+#: templates/_mfa_login_field.html:118
+msgid "No USB Key found"
+msgstr "Nenhuma chave USB encontrada"
+
+#: authentication/templates/authentication/bind_ukey.html:80
+#: templates/_mfa_login_field.html:164
+msgid "No container found, error code: "
+msgstr "Nenhum contêiner encontrado, código de erro: "
+
+#: authentication/templates/authentication/bind_ukey.html:85
+msgid "Failed to export public key, error code: "
+msgstr "Falha ao exportar a chave pública, código de erro: "
+
+#: authentication/templates/authentication/bind_ukey.html:102
+msgid "Bind success"
+msgstr "Vinculação bem-sucedida"
+
+#: templates/_mfa_login_field.html:24
+msgid "Key PIN code"
+msgstr "Código PIN da Key"
+
+#: templates/_mfa_login_field.html:152
+msgid "Failed to verify user password, error code: "
+msgstr "Falha ao verificar a senha do usuário, código de erro: "
+
+#: templates/_mfa_login_field.html:159
+msgid "Failed to get challenge"
+msgstr "Falha ao obter o desafio"
+
+#: templates/_mfa_login_field.html:172
+msgid "Signature failed, error code: "
+msgstr "Falha na assinatura, código de erro: "
+
+#: templates/_mfa_login_field.html:177
+msgid "Data digest failed, error code: "
+msgstr "Falha no resumo dos dados, código de erro: "
+
+#: templates/_mfa_login_field.html:186
+msgid "USBKey signature generated"
+msgstr "Assinatura da chave USB gerada"
+
+#: settings/serializers/security.py:140
+msgid "MFA via USBKey"
+msgstr "MFA via chave USB"
+
+#: settings/serializers/security.py:141
+msgid "USBKey as a method for multi-factor authentication"
+msgstr "Chave USB como método de autenticação multifator"
+
+#: users/models/ukey.py:24
+msgid "User UKey"
+msgstr "UKey do usuário"

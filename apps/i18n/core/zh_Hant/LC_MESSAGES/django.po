@@ -11813,3 +11813,119 @@ msgstr "許可證無效"
 
 #~ msgid "Task not started"
 #~ msgstr "任務未開始"
+
+# USB Key MFA
+#: authentication/const.py:41
+msgid "USBKey"
+msgstr "USBKey"
+
+#: authentication/mfa/usbkey.py:15
+msgid "USBKey verification failed"
+msgstr "USBKey 驗證失敗"
+
+#: authentication/mfa/usbkey.py:16
+msgid "USBKey challenge expired"
+msgstr "USBKey 挑戰已過期"
+
+#: authentication/mfa/usbkey.py:17
+msgid "USBKey unset"
+msgstr "USBKey 未設定"
+
+#: authentication/mfa/usbkey.py:23
+msgid "USBKey signature payload"
+msgstr "USBKey 簽名內容"
+
+#: authentication/mfa/usbkey.py:111
+msgid "Bind USBKey to enable"
+msgstr "綁定 USBKey 以啟用"
+
+#: authentication/mfa/usbkey.py:115
+msgid "Unbind USBKey to disable"
+msgstr "解除綁定 USBKey 以停用"
+
+#: authentication/templates/authentication/bind_ukey.html:19
+msgid "USB Key Bind"
+msgstr "USB Key 綁定"
+
+#: authentication/templates/authentication/bind_ukey.html:30
+#: users/models/ukey.py:18
+msgid "USB Key Serial"
+msgstr "USB Key 序號"
+
+#: authentication/templates/authentication/bind_ukey.html:36
+#: users/models/ukey.py:21
+#: users/serializers/ukey.py:9
+msgid "USB Key Public Key"
+msgstr "USB Key 公鑰"
+
+#: authentication/templates/authentication/bind_ukey.html:40
+msgid "Click to get USB Key information"
+msgstr "點擊取得 USB Key 資訊"
+
+#: authentication/templates/authentication/bind_ukey.html:43
+msgid "Remove USB Key binding"
+msgstr "移除 USB Key 綁定"
+
+#: authentication/templates/authentication/bind_ukey.html:58
+#: templates/_mfa_login_field.html:113
+msgid "Failed to load plugin, error code: "
+msgstr "載入外掛失敗，錯誤碼："
+
+#: authentication/templates/authentication/bind_ukey.html:65
+#: templates/_mfa_login_field.html:123
+msgid "Failed to bind application, please check if the Key is initialized, error code: "
+msgstr "綁定應用失敗，請確認 Key 是否已初始化，錯誤碼："
+
+#: authentication/templates/authentication/bind_ukey.html:68
+#: templates/_mfa_login_field.html:118
+msgid "No USB Key found"
+msgstr "未找到 USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:80
+#: templates/_mfa_login_field.html:164
+msgid "No container found, error code: "
+msgstr "未找到容器，錯誤碼："
+
+#: authentication/templates/authentication/bind_ukey.html:85
+msgid "Failed to export public key, error code: "
+msgstr "匯出公鑰失敗，錯誤碼："
+
+#: authentication/templates/authentication/bind_ukey.html:102
+msgid "Bind success"
+msgstr "綁定成功"
+
+#: templates/_mfa_login_field.html:24
+msgid "Key PIN code"
+msgstr "Key PIN 碼"
+
+#: templates/_mfa_login_field.html:152
+msgid "Failed to verify user password, error code: "
+msgstr "驗證使用者密碼失敗，錯誤碼："
+
+#: templates/_mfa_login_field.html:159
+msgid "Failed to get challenge"
+msgstr "取得挑戰失敗"
+
+#: templates/_mfa_login_field.html:172
+msgid "Signature failed, error code: "
+msgstr "簽名失敗，錯誤碼："
+
+#: templates/_mfa_login_field.html:177
+msgid "Data digest failed, error code: "
+msgstr "資料摘要失敗，錯誤碼："
+
+#: templates/_mfa_login_field.html:186
+msgid "USBKey signature generated"
+msgstr "USBKey 簽名已產生"
+
+#: settings/serializers/security.py:140
+msgid "MFA via USBKey"
+msgstr "透過 USBKey 進行 MFA"
+
+#: settings/serializers/security.py:141
+msgid "USBKey as a method for multi-factor authentication"
+msgstr "使用 USBKey 作為多因素認證方式"
+
+#: users/models/ukey.py:24
+msgid "User UKey"
+msgstr "使用者 UKey"

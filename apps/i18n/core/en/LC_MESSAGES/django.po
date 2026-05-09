@@ -11549,3 +11549,119 @@ msgstr ""
 #: xpack/plugins/license/api.py:53
 msgid "Invalid license"
 msgstr ""
+
+# USB Key MFA
+#: authentication/const.py:41
+msgid "USBKey"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:15
+msgid "USBKey verification failed"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:16
+msgid "USBKey challenge expired"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:17
+msgid "USBKey unset"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:23
+msgid "USBKey signature payload"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:111
+msgid "Bind USBKey to enable"
+msgstr ""
+
+#: authentication/mfa/usbkey.py:115
+msgid "Unbind USBKey to disable"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:19
+msgid "USB Key Bind"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:30
+#: users/models/ukey.py:18
+msgid "USB Key Serial"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:36
+#: users/models/ukey.py:21
+#: users/serializers/ukey.py:9
+msgid "USB Key Public Key"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:40
+msgid "Click to get USB Key information"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:43
+msgid "Remove USB Key binding"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:58
+#: templates/_mfa_login_field.html:113
+msgid "Failed to load plugin, error code: "
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:65
+#: templates/_mfa_login_field.html:123
+msgid "Failed to bind application, please check if the Key is initialized, error code: "
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:68
+#: templates/_mfa_login_field.html:118
+msgid "No USB Key found"
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:80
+#: templates/_mfa_login_field.html:164
+msgid "No container found, error code: "
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:85
+msgid "Failed to export public key, error code: "
+msgstr ""
+
+#: authentication/templates/authentication/bind_ukey.html:102
+msgid "Bind success"
+msgstr ""
+
+#: templates/_mfa_login_field.html:24
+msgid "Key PIN code"
+msgstr ""
+
+#: templates/_mfa_login_field.html:152
+msgid "Failed to verify user password, error code: "
+msgstr ""
+
+#: templates/_mfa_login_field.html:159
+msgid "Failed to get challenge"
+msgstr ""
+
+#: templates/_mfa_login_field.html:172
+msgid "Signature failed, error code: "
+msgstr ""
+
+#: templates/_mfa_login_field.html:177
+msgid "Data digest failed, error code: "
+msgstr ""
+
+#: templates/_mfa_login_field.html:186
+msgid "USBKey signature generated"
+msgstr ""
+
+#: settings/serializers/security.py:140
+msgid "MFA via USBKey"
+msgstr ""
+
+#: settings/serializers/security.py:141
+msgid "USBKey as a method for multi-factor authentication"
+msgstr ""
+
+#: users/models/ukey.py:24
+msgid "User UKey"
+msgstr ""

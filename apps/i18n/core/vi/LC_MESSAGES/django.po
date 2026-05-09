@@ -12292,3 +12292,119 @@ msgstr "Giấy phép không hợp lệ"
 
 #~ msgid "Task not started"
 #~ msgstr "Nhiệm vụ vẫn chưa bắt đầu"
+
+# USB Key MFA
+#: authentication/const.py:41
+msgid "USBKey"
+msgstr "USB Key"
+
+#: authentication/mfa/usbkey.py:15
+msgid "USBKey verification failed"
+msgstr "Xác minh USB Key thất bại"
+
+#: authentication/mfa/usbkey.py:16
+msgid "USBKey challenge expired"
+msgstr "Thử thách USB Key đã hết hạn"
+
+#: authentication/mfa/usbkey.py:17
+msgid "USBKey unset"
+msgstr "Chưa thiết lập USB Key"
+
+#: authentication/mfa/usbkey.py:23
+msgid "USBKey signature payload"
+msgstr "Dữ liệu chữ ký USB Key"
+
+#: authentication/mfa/usbkey.py:111
+msgid "Bind USBKey to enable"
+msgstr "Liên kết USB Key để bật"
+
+#: authentication/mfa/usbkey.py:115
+msgid "Unbind USBKey to disable"
+msgstr "Hủy liên kết USB Key để tắt"
+
+#: authentication/templates/authentication/bind_ukey.html:19
+msgid "USB Key Bind"
+msgstr "Liên kết USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:30
+#: users/models/ukey.py:18
+msgid "USB Key Serial"
+msgstr "Số sê-ri USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:36
+#: users/models/ukey.py:21
+#: users/serializers/ukey.py:9
+msgid "USB Key Public Key"
+msgstr "Khóa công khai USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:40
+msgid "Click to get USB Key information"
+msgstr "Nhấn để lấy thông tin USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:43
+msgid "Remove USB Key binding"
+msgstr "Xóa liên kết USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:58
+#: templates/_mfa_login_field.html:113
+msgid "Failed to load plugin, error code: "
+msgstr "Tải plugin thất bại, mã lỗi: "
+
+#: authentication/templates/authentication/bind_ukey.html:65
+#: templates/_mfa_login_field.html:123
+msgid "Failed to bind application, please check if the Key is initialized, error code: "
+msgstr "Liên kết ứng dụng thất bại, vui lòng kiểm tra Key đã được khởi tạo chưa, mã lỗi: "
+
+#: authentication/templates/authentication/bind_ukey.html:68
+#: templates/_mfa_login_field.html:118
+msgid "No USB Key found"
+msgstr "Không tìm thấy USB Key"
+
+#: authentication/templates/authentication/bind_ukey.html:80
+#: templates/_mfa_login_field.html:164
+msgid "No container found, error code: "
+msgstr "Không tìm thấy container, mã lỗi: "
+
+#: authentication/templates/authentication/bind_ukey.html:85
+msgid "Failed to export public key, error code: "
+msgstr "Xuất khóa công khai thất bại, mã lỗi: "
+
+#: authentication/templates/authentication/bind_ukey.html:102
+msgid "Bind success"
+msgstr "Liên kết thành công"
+
+#: templates/_mfa_login_field.html:24
+msgid "Key PIN code"
+msgstr "Mã PIN của Key"
+
+#: templates/_mfa_login_field.html:152
+msgid "Failed to verify user password, error code: "
+msgstr "Xác minh mật khẩu người dùng thất bại, mã lỗi: "
+
+#: templates/_mfa_login_field.html:159
+msgid "Failed to get challenge"
+msgstr "Lấy thử thách thất bại"
+
+#: templates/_mfa_login_field.html:172
+msgid "Signature failed, error code: "
+msgstr "Ký thất bại, mã lỗi: "
+
+#: templates/_mfa_login_field.html:177
+msgid "Data digest failed, error code: "
+msgstr "Tạo tóm tắt dữ liệu thất bại, mã lỗi: "
+
+#: templates/_mfa_login_field.html:186
+msgid "USBKey signature generated"
+msgstr "Đã tạo chữ ký USB Key"
+
+#: settings/serializers/security.py:140
+msgid "MFA via USBKey"
+msgstr "MFA qua USB Key"
+
+#: settings/serializers/security.py:141
+msgid "USBKey as a method for multi-factor authentication"
+msgstr "USB Key là phương thức xác thực đa yếu tố"
+
+#: users/models/ukey.py:24
+msgid "User UKey"
+msgstr "UKey người dùng"
