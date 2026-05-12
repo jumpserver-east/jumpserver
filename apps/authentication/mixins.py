@@ -303,6 +303,22 @@ class MFAMixin:
     request: Request
     get_user_from_session: Callable
     get_request_ip: Callable
+    login_mfa_cache_key = 'LOGIN_MFA_VERIFIED_{}_{}_{}'
+
+    def get_login_mfa_cache_key(self, user):
+        auth_backend = self.request.session.get('auth_backend') or \
+            getattr(user, 'backend', settings.AUTH_BACKEND_MODEL)
+        ip = self.request.session.get('auth_remote_addr') or self.get_request_ip()
+        return self.login_mfa_cache_key.format(user.id, ip, auth_backend)
+
+    def is_login_mfa_cache_valid(self, user):
+        return bool(cache.get(self.get_login_mfa_cache_key(user)))
+
+    def cache_login_mfa_verified(self, user):
+        ttl = settings.SECURITY_MFA_VERIFY_TTL
+        if ttl <= 0:
+            return
+        cache.set(self.get_login_mfa_cache_key(user), 1, ttl)
 
     def _check_if_no_active_mfa(self, user):
         active_mfa_mapper = user.active_mfa_backends_mapper
@@ -335,16 +351,21 @@ class MFAMixin:
             return
         if not user.mfa_enabled:
             return
+        if self.is_login_mfa_cache_valid(user):
+            self.mark_mfa_ok('', user, cache_verified=False)
+            return
 
         active_mfa_names = user.active_mfa_backends_mapper.keys()
         raise errors.MFARequiredError(mfa_types=tuple(active_mfa_names))
 
-    def mark_mfa_ok(self, mfa_type, user):
+    def mark_mfa_ok(self, mfa_type, user, cache_verified=True):
         self.request.session['auth_mfa'] = 1
         self.request.session['auth_mfa_username'] = user.username
         self.request.session['auth_mfa_time'] = time.time()
         self.request.session['auth_mfa_required'] = 0
         self.request.session['auth_mfa_type'] = mfa_type
+        if cache_verified:
+            self.cache_login_mfa_verified(user)
         MFABlockUtils(user.username, self.get_request_ip()).clean_failed_count()
 
     def clean_mfa_mark(self):
@@ -663,6 +684,7 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
         request.session['auth_password_expired_at'] = time.time() + settings.AUTH_EXPIRED_SECONDS
         request.session['user_id'] = str(user.id)
         request.session['auto_login'] = auto_login
+        request.session['auth_remote_addr'] = self.get_request_ip()
         if not auth_backend:
             auth_backend = getattr(user, 'backend', settings.AUTH_BACKEND_MODEL)
 
@@ -700,7 +722,8 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
         keys = [
             'auth_password', 'user_id', 'auth_confirm_required',
             'auth_notice_required', 'auth_ticket_id', 'auth_acl_id',
-            'user_session_id', 'user_log_id', 'can_send_notifications'
+            'user_session_id', 'user_log_id', 'can_send_notifications',
+            'auth_remote_addr'
         ]
         for k in keys:
             self.request.session.pop(k, '')
