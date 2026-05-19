@@ -1,3 +1,6 @@
+上海达美乐定制内容：
+在生成 inventory 逻辑中，只有当资产分类是 database 时，把每个展开出来的 host 里的 jms_account 覆盖成“当前目标账号的旧凭据”。
+使得实现需求：修改数据库账号和密码的时候使用自己的账号修改自己的密码
 <div align="center">
   <a name="readme-top"></a>
   <a href="https://jumpserver.com" target="_blank"><img src="https://download.jumpserver.org/images/jumpserver-logo.svg" alt="JumpServer" width="300" /></a>

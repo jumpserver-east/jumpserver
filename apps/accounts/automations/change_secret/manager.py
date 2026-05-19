@@ -10,6 +10,7 @@ from accounts.const import (
 )
 from accounts.models import ChangeSecretRecord
 from accounts.notifications import ChangeSecretExecutionTaskMsg
+from assets.const import Category
 from accounts.serializers import ChangeSecretRecordBackUpSerializer
 from common.utils import get_logger
 from common.utils.file import encrypt_and_compress_zip_file
@@ -30,6 +31,21 @@ class ChangeSecretManager(BaseChangeSecretPushManager):
         record = self.get_or_create_record(asset, account, h['name'])
         new_secret, private_key_path = self.handle_ssh_secret(account.secret_type, record.new_secret, path_dir)
         h = self.gen_inventory(h, account, new_secret, private_key_path, asset)
+        is_database_asset = str(asset.category) == Category.DATABASE.value
+        if is_database_asset:
+            print(
+                f"Use target account as database change-secret login: "
+                f"{account.username}@{asset.address}"
+            )
+            h['jms_account'] = {
+                'id': str(account.id),
+                'username': account.username,
+                'secret': account.escape_jinja2_syntax(record.old_secret),
+                'secret_type': account.secret_type,
+                'private_key_path': account.get_private_key_path(path_dir),
+            }
+            if asset.platform.type == 'oracle':
+                h['jms_account']['mode'] = 'sysdba' if account.privileged else None
         return h, record
 
     def get_or_create_record(self, asset, account, name):
