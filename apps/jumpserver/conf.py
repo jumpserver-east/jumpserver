@@ -579,6 +579,20 @@ class Config(dict):
         'TICKETS_ENABLED': True,
         'TICKETS_DIRECT_APPROVE': False,
 
+        # Command face verify camera system
+        'CAMERA_SYSTEM_BASE_URL': 'http://25.86.163.14:18080',
+        'CAMERA_SYSTEM_SIGN_DATA': '',
+        'CAMERA_TOKEN_CACHE_SECONDS': 3600,
+        'CAMERA_PHOTO_TIMEOUT_SECONDS': 60,
+        'AI_FACE_BASE_URL': '',
+        'AI_FACE_APP_ID': '',
+        'AI_FACE_SIGN_KEY': '',
+        'AI_FACE_SM4_KEY': '',
+        'AI_FACE_AGENT_ID': '123456789',
+        'AI_FACE_ACCESS_TOKEN': '',
+        'AI_FACE_TOKEN_CACHE_SECONDS': 3600,
+        'AI_FACE_PASS_THRESHOLD': 80,
+
         # 废弃的
         'DEFAULT_ORG_SHOW_ALL_USERS': True,
         'ORG_CHANGE_TO_URL': '',
