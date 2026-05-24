@@ -2,6 +2,7 @@
 #
 
 from .access_key import *
+from .camera import *
 from .common import *
 from .confirm import *
 from .connection_token import *

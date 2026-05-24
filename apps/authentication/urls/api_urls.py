@@ -25,6 +25,8 @@ urlpatterns = [
     path('lark/event/subscription/callback/', api.LarkEventSubscriptionCallback.as_view(),
          name='lark-event-subscription-callback'),
 
+    path('camera/photo/callback/', api.CameraPhotoCallbackApi.as_view(), name='camera-photo-callback'),
+
     path('auth/', api.TokenCreateApi.as_view(), name='user-auth'),
     path('isc-auth/', api.ISCTokenCreateApi.as_view(), name='isc-user-auth'),
     path('confirm-oauth/', api.ConfirmBindORUNBindOAuth.as_view(), name='confirm-oauth'),

@@ -1,3 +1,4 @@
+from .camera import *
 from .confirm import *
 from .connect_token_secret import *
 from .connection_token import *
