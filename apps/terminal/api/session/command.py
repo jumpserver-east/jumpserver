@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 import uuid
+from datetime import datetime
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.fields import DateTimeField
@@ -146,6 +147,7 @@ class CommandViewSet(JMSBulkModelViewSet):
         page = self.paginate_queryset(queryset)
         if page is not None:
             page = self.load_remote_addr(page)
+            page = self.load_face_verify(page)
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
@@ -153,6 +155,7 @@ class CommandViewSet(JMSBulkModelViewSet):
         queryset = queryset[:]
 
         queryset = self.load_remote_addr(queryset)
+        queryset = self.load_face_verify(queryset)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -163,6 +166,32 @@ class CommandViewSet(JMSBulkModelViewSet):
         session_addr_map = {str(i): addr for i, addr in sessions}
         for command in commands:
             command.remote_addr = session_addr_map.get(command.session, '')
+        return commands
+
+    def load_face_verify(self, queryset):
+        from authentication.models import CommandFaceVerifyRecord
+
+        commands = list(queryset)
+        session_ids = {command.session for command in commands}
+        if not session_ids:
+            return commands
+
+        earliest = min(command.timestamp for command in commands)
+        latest = max(command.timestamp for command in commands)
+        date_from = datetime.fromtimestamp(earliest - 300, tz=timezone.get_current_timezone())
+        date_to = datetime.fromtimestamp(latest + 300, tz=timezone.get_current_timezone())
+        records = CommandFaceVerifyRecord.objects.filter(
+            session_id__in=session_ids, date_created__range=(date_from, date_to)
+        ).order_by('-date_created')
+
+        record_mapper = {}
+        for record in records:
+            key = (str(record.session_id), record.run_command)
+            record_mapper.setdefault(key, record)
+
+        for command in commands:
+            record = record_mapper.get((command.session, command.input[:4090]))
+            command.face_verify = get_face_verify_summary(record) if record else None
         return commands
 
     def get_queryset(self):
@@ -239,3 +268,14 @@ class InsecureCommandAlertAPI(generics.CreateAPIView):
                 logger.info(f'Risk level ignore: {RiskLevelChoices.get_label(risk_level)}({risk_level})')
 
         return Response({'msg': 'ok'})
+
+
+def get_face_verify_summary(record):
+    return {
+        'sign': record.sign,
+        'status': record.status,
+        'score': float(record.score) if record.score is not None else None,
+        'threshold': float(record.threshold) if record.threshold is not None else None,
+        'ticket_id': str(record.ticket_id) if record.ticket_id else None,
+        'date_compared': record.date_compared,
+    }

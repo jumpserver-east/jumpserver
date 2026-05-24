@@ -74,6 +74,7 @@ class SessionCommandSerializerMixin(serializers.Serializer):
     timestamp = serializers.IntegerField(label=_('Timestamp'))
     timestamp_display = serializers.DateTimeField(read_only=True, label=_('Datetime'))
     remote_addr = serializers.CharField(read_only=True, label=_('Remote Address'))
+    face_verify = serializers.JSONField(read_only=True, required=False)
 
     def validate_account(self, value):
         if len(value) > 64:
@@ -86,5 +87,6 @@ class SessionCommandSerializer(SessionCommandSerializerMixin, SimpleSessionComma
 
     class Meta(SimpleSessionCommandSerializer.Meta):
         fields = SimpleSessionCommandSerializer.Meta.fields + [
-            'id', 'account', 'output', 'timestamp', 'timestamp_display', 'remote_addr'
+            'id', 'account', 'output', 'timestamp', 'timestamp_display', 'remote_addr',
+            'face_verify'
         ]
