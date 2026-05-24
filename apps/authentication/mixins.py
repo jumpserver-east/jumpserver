@@ -361,7 +361,7 @@ class AuthACLMixin:
         if acl.is_action(LoginACL.ActionChoices.reject):
             raise errors.LoginACLIPAndTimePeriodNotAllowed(user.username, request=self.request)
 
-        if acl.is_action(acl.ActionChoices.review):
+        if acl.is_action(acl.ActionChoices.review) or acl.is_action(acl.ActionChoices.face_review):
             self.request.session['auth_confirm_required'] = '1'
             self.request.session['auth_acl_id'] = str(acl.id)
             return
@@ -388,7 +388,7 @@ class AuthACLMixin:
         acl = LoginACL.get_user_acls(user).filter(id=acl_id).first()
         if not acl:
             return
-        if not acl.is_action(acl.ActionChoices.review):
+        if not acl.is_action(acl.ActionChoices.review) and not acl.is_action(acl.ActionChoices.face_review):
             return
         self.get_ticket_or_create(acl, user)
         self.check_user_login_confirm()

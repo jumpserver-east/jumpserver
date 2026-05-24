@@ -434,7 +434,7 @@ class ConnectionTokenViewSet(ExtraActionApiMixin, RootOrgViewMixin, JMSModelView
             self._record_operate_log(acl, asset)
             msg = _('ACL action is reject: {}({})'.format(acl.name, acl.id))
             raise JMSException(code='acl_reject', detail=msg)
-        if acl.is_action(acl.ActionChoices.review):
+        if acl.is_action(acl.ActionChoices.review) or acl.is_action(acl.ActionChoices.face_review):
             if not self.request.query_params.get('create_ticket'):
                 msg = _('ACL action is review')
                 raise JMSException(code='acl_review', detail=msg)

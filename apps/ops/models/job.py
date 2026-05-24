@@ -439,7 +439,8 @@ class JobExecution(JMSOrgBaseModel):
                 if acl.is_action(CommandFilterACL.ActionChoices.accept):
                     return True
                 elif acl.is_action(CommandFilterACL.ActionChoices.reject) or acl.is_action(
-                        CommandFilterACL.ActionChoices.review):
+                        CommandFilterACL.ActionChoices.review) or acl.is_action(
+                        CommandFilterACL.ActionChoices.face_review):
                     print("\033[31mcommand \'{}\' on asset {}({}) is rejected by acl {}\033[0m"
                           .format(self.current_job.args, asset.name, asset.address, acl))
                     CommandExecutionAlert({

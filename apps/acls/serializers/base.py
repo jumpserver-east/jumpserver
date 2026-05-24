@@ -62,16 +62,20 @@ class ActionAclSerializer(serializers.Serializer):
         self.set_action_choices()
 
     class Meta:
-        action_choices_exclude = [ActionChoices.warning]
+        action_choices_exclude = [ActionChoices.warning, ActionChoices.face_review]
 
     def set_action_choices(self):
         field_action = self.fields.get("action")
         if not field_action:
             return
+        choices = list(field_action.choices.items())
+        excludes = set(self.Meta.action_choices_exclude)
         if not settings.XPACK_LICENSE_IS_VALID:
-            field_action._choices.pop(ActionChoices.review, None)
-        for choice in self.Meta.action_choices_exclude:
-            field_action._choices.pop(choice, None)
+            excludes.add(ActionChoices.review)
+        field_action.choices = [
+            (choice, label) for choice, label in choices
+            if choice not in excludes
+        ]
 
 
 class BaseACLSerializer(ActionAclSerializer, serializers.Serializer):
@@ -95,7 +99,7 @@ class BaseACLSerializer(ActionAclSerializer, serializers.Serializer):
         action = self.initial_data.get('action')
         if not action and self.instance:
             action = self.instance.action
-        if action != ActionChoices.review:
+        if action not in (ActionChoices.review, ActionChoices.face_review):
             return reviewers
         org_id = self.fields["org_id"].default()
         org = Organization.get_instance(org_id)

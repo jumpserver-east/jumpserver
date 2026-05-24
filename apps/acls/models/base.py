@@ -66,6 +66,8 @@ class BaseACL(JMSBaseModel):
         for acl in acl_qs:
             if acl.is_action(ActionChoices.review) and not acl.reviewers.exists():
                 continue
+            if acl.is_action(ActionChoices.face_review) and not acl.reviewers.exists():
+                continue
             ip_group = acl.rules.get('ip_group')
             time_periods = acl.rules.get('time_period')
             is_contain_ip = contains_ip(ip, ip_group) if ip_group else True
