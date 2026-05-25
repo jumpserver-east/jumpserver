@@ -83,7 +83,7 @@ class CommandFilterACLViewSet(OrgBulkModelViewSet):
         if face_record.status != CommandFaceVerifyRecord.StatusChoices.passed:
             raise ValidationError({
                 'code': get_face_verify_error_code(face_record.status),
-                'detail': face_record.error_message or face_record.get_status_display()
+                'detail': get_face_verify_error_detail(face_record)
             })
         ticket = serializer.cmd_filter_acl.create_command_review_ticket(**data)
         face_record.ticket_id = ticket.id
@@ -109,3 +109,30 @@ def get_face_verify_error_code(status):
         CommandFaceVerifyRecord.StatusChoices.error: 'face_verify_compare_failed',
     }
     return mapper.get(status, 'face_verify_compare_failed')
+
+
+def get_face_verify_error_detail(record):
+    detail = (record.error_message or '').strip()
+    if is_id_number_error(detail):
+        stage_message = '人脸核验失败：获取用户身份证号失败'
+    else:
+        stage_message = get_face_verify_stage_message(record.status)
+    if detail:
+        return '{}（{}）'.format(stage_message, detail)
+    return stage_message
+
+
+def get_face_verify_stage_message(status):
+    mapper = {
+        CommandFaceVerifyRecord.StatusChoices.token_failed: '人脸核验失败：获取拍照系统 token 失败',
+        CommandFaceVerifyRecord.StatusChoices.camera_call_failed: '人脸核验失败：调用拍照系统失败',
+        CommandFaceVerifyRecord.StatusChoices.timeout: '人脸核验失败：等待拍照系统回调超时',
+        CommandFaceVerifyRecord.StatusChoices.failed: '人脸核验失败：AI 人脸比对不通过',
+        CommandFaceVerifyRecord.StatusChoices.error: '人脸核验失败：AI 人脸平台配置缺失或调用异常',
+    }
+    return mapper.get(status, '人脸核验失败：未知异常')
+
+
+def is_id_number_error(detail):
+    detail = detail.lower()
+    return 'id number' in detail or '身份证' in detail
