@@ -247,11 +247,15 @@
             display: inline-block;
         }
 
-        .auto-login input[type=checkbox] {
+    .auto-login input[type=checkbox] {
 
-        }
+    }
 
-        .error-info {
+    .password-masked {
+      -webkit-text-security: disc;
+    }
+
+    .error-info {
             font-size: 16px;
             text-align: center;
         }
@@ -352,7 +356,7 @@
                 </ul>
             </div>
             <div class="contact-form col-md-10 col-md-offset-1" style='float: none; overflow: hidden'>
-                <form id="login-form" action="" method="post" role="form" novalidate="novalidate">
+                <form id="login-form" action="" method="post" role="form" novalidate="novalidate" autocomplete="off">
                     {% csrf_token %}
                     <div style="line-height: 17px;margin-bottom: 20px;color: #999999;">
                         {% if form.non_field_errors %}
@@ -364,8 +368,17 @@
 
                     {% bootstrap_field form.username show_label=False %}
                     <div class="form-group {% if form.password.errors %} has-error {% endif %}">
-                        <input type="password" class="form-control" id="password" placeholder="{% trans 'Password' %}"
-                               required>
+                        {% if SECURITY_LUNA_DISABLE_BROWSER_PASSWORD_MANAGER %}
+                        <div style="position:relative;">
+                            <input type="text" class="form-control password-masked" id="password"
+                                   placeholder="{% trans 'Password' %}" autocomplete="one-time-code">
+                            <span class="show-pwd" onclick="togglePwd()"
+                                  style="position:absolute;right:10px;top:8px;cursor:pointer;color:#999;font-size:14px;">👁</span>
+                        </div>
+                        {% else %}
+                        <input type="password" class="form-control" id="password"
+                               placeholder="{% trans 'Password' %}" required>
+                        {% endif %}
                         <input id="password-hidden" type="text" style="display:none"
                                name="{{ form.password.html_name }}">
                         {% if form.password.errors %}
@@ -445,6 +458,10 @@
 <script type="text/javascript" src="/static/js/plugins/cryptojs/crypto-js.min.js"></script>
 <script type="text/javascript" src="/static/js/plugins/buffer/buffer.min.js"></script>
 <script>
+    function togglePwd() {
+        $('#password').toggleClass('password-masked');
+    }
+
     function doLogin() {
         //公钥加密
         var password = $('#password').val(); //明文密码

@@ -122,6 +122,7 @@ class UserLoginContextMixin:
             'current_lang': self.get_current_lang(),
             'forgot_password_url': self.get_forgot_password_url(),
             'extra_fields_count': self.get_extra_fields_count(context),
+            'SECURITY_LUNA_DISABLE_BROWSER_PASSWORD_MANAGER': settings.SECURITY_LUNA_DISABLE_BROWSER_PASSWORD_MANAGER,
             **self.get_user_mfa_context(self.request.user)
         })
         return context

@@ -248,6 +248,10 @@ class SecuritySessionSerializer(serializers.Serializer):
     SECURITY_LUNA_REMEMBER_AUTH = serializers.BooleanField(
         label=_("Remember manual auth")
     )
+    SECURITY_LUNA_DISABLE_BROWSER_PASSWORD_MANAGER = serializers.BooleanField(
+        label=_("Disable browser password manager for Luna"),
+        help_text=_('When enabled, suppress browser password manager prompts on asset connection forms.')
+    )
     SECURITY_SESSION_SHARE = serializers.BooleanField(
         required=True, label=_('Session share'),
         help_text=_("Enabled, Allows user active session to be shared with other users")
