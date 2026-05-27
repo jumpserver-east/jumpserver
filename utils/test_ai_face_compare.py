@@ -3,11 +3,9 @@ import argparse
 import base64
 import hashlib
 import json
-import os
 import sys
 import time
 import uuid
-from pathlib import Path
 from urllib import error as url_error
 from urllib import request as url_request
 
@@ -15,15 +13,15 @@ TOKEN_URL = '/openapi/resource/getAccessToken'
 COMPARE_URL = '/openapi/face/compare'
 JSON_TYPE = 'application/json;charset=UTF-8'
 
-# 默认配置来自 Java 示例截图。也可以用命令行参数或环境变量覆盖。
-DEFAULT_BASE_URL = 'http://25.86.167.195:18082'
-DEFAULT_APP_ID = 'c79a55abbcfb249ba37de3rc4ac267ea67'
-DEFAULT_SIGN_KEY = '00D4ED7F306FDC9949DD249EF23FD1C14615572930A1EBAFF98FCB563A33A4F4D89D'
-DEFAULT_SM4_KEY = 'e2e2d245a5b34fc48dc4e5dd6181cdc8'
-DEFAULT_AGENT_ID = '123456789'
+AI_FACE_BASE_URL = 'http://localhost:18080'
+AI_FACE_APP_ID = '6435e616f311b23dd6561980ebd'
+AI_FACE_SIGN_KEY = '0309540920CA56551A7D169E413220925C463922898D'
+AI_FACE_SM4_KEY = '0613160931302077172'
+AI_FACE_ACCESS_TOKEN = ''
+AI_FACE_PASS_THRESHOLD = 0.8
 
-# 1x1 PNG。默认 fileA/fileB 都使用它，确保两张“假图片”完全一致。
-# 如果接口强校验人脸，这张图可能会返回“未检测到人脸”，但能验证签名、加密和请求链路。
+# 1x1 PNG。fileA/fileB 都使用它，确保两张“假图片”完全一致。
+# 如果 AI 平台强校验人脸，这张图可能会返回“未检测到人脸”，但能验证 token、签名、加密和请求链路。
 PLACEHOLDER_IMAGE_BASE64 = (
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8'
     '/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
@@ -33,10 +31,7 @@ PLACEHOLDER_IMAGE_BASE64 = (
 def mask(value, left=6, right=4):
     if value is None:
         return ''
-    value = str(value)
-    if len(value) <= left + right:
-        return '*' * len(value)
-    return '{}{}{}'.format(value[:left], '*' * (len(value) - left - right), value[-right:])
+    return str(value)
 
 
 def step(title):
@@ -72,17 +67,9 @@ def summarize_body(body):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Python debug demo for getAccessToken and face 1:1 compare APIs.'
+        description='Complete AI face platform test: get accessToken, then compare two same fake images.'
     )
-    parser.add_argument('--base-url', default=os.getenv('AI_FACE_BASE_URL', DEFAULT_BASE_URL))
-    parser.add_argument('--app-id', default=os.getenv('AI_FACE_APP_ID', DEFAULT_APP_ID))
-    parser.add_argument('--sign-key', default=os.getenv('AI_FACE_SIGN_KEY', DEFAULT_SIGN_KEY))
-    parser.add_argument('--sm4-key', default=os.getenv('AI_FACE_SM4_KEY', DEFAULT_SM4_KEY))
-    parser.add_argument('--agent-id', default=os.getenv('AI_FACE_AGENT_ID', DEFAULT_AGENT_ID))
-    parser.add_argument('--access-token', default=os.getenv('AI_FACE_ACCESS_TOKEN', ''))
-    parser.add_argument('--image-a', help='first face image path')
-    parser.add_argument('--image-b', help='second face image path; defaults to image-a, or fake image')
-    parser.add_argument('--seq', default='111', help='request sequence value')
+    parser.add_argument('--seq', default='debug-fake-image-compare', help='request sequence value')
     parser.add_argument('--timeout', type=int, default=30)
     parser.add_argument(
         '--token-only',
@@ -94,22 +81,22 @@ def parse_args():
 
 class FaceApiDebugClient:
     def __init__(self, args):
-        self.base_url = args.base_url.rstrip('/')
-        self.app_id = args.app_id
-        self.sign_key = args.sign_key
-        self.sm4_key = args.sm4_key
-        self.agent_id = args.agent_id
-        self.access_token = args.access_token
+        self.base_url = AI_FACE_BASE_URL.rstrip('/')
+        self.app_id = AI_FACE_APP_ID
+        self.sign_key = AI_FACE_SIGN_KEY
+        self.sm4_key = AI_FACE_SM4_KEY
+        self.access_token = AI_FACE_ACCESS_TOKEN
+        self.threshold = AI_FACE_PASS_THRESHOLD
         self.timeout = args.timeout
 
     def validate_config(self):
         self.validate_dependencies()
         missing = []
         for name, value in [
-            ('AI_FACE_BASE_URL or --base-url', self.base_url),
-            ('AI_FACE_APP_ID or --app-id', self.app_id),
-            ('AI_FACE_SIGN_KEY or --sign-key', self.sign_key),
-            ('AI_FACE_SM4_KEY or --sm4-key', self.sm4_key),
+            ('AI_FACE_BASE_URL', self.base_url),
+            ('AI_FACE_APP_ID', self.app_id),
+            ('AI_FACE_SIGN_KEY', self.sign_key),
+            ('AI_FACE_SM4_KEY', self.sm4_key),
         ]:
             if not value:
                 missing.append(name)
@@ -145,18 +132,27 @@ class FaceApiDebugClient:
         print('expires: {}'.format(data.get('exp') or data.get('expires_in') or data.get('expiresIn')))
         return token
 
-    def compare(self, image_a, image_b, seq):
-        image_b = image_b or image_a
+    def compare(self, seq):
         body = {
-            'fileA': self.encrypt_image_base64(image_a, 'image-a'),
-            'fileB': self.encrypt_image_base64(image_b, 'image-b'),
+            'fileA': self.encrypt_fake_image_base64('fileA'),
+            'fileB': self.encrypt_fake_image_base64('fileB'),
             'seq': seq,
         }
         response = self.post(COMPARE_URL, body, token_required=True)
-        self.check_success(response, 'compare')
+        self.check_response_code(response, 'compare')
         data = response.get('data') or {}
-        print('score: {}'.format(data.get('score')))
+        score = self.find_first_number(data, ('score', 'similarity', 'similar', 'confidence'))
+        threshold = self.find_first_number(data, ('threshold', 'passThreshold'))
+        if threshold is None:
+            threshold = self.parse_number(self.threshold)
+        passed = self.find_first_bool(data, ('passed', 'pass', 'success', 'samePerson', 'isSame'))
+        if passed is None and score is not None and threshold is not None:
+            passed = score >= threshold
+
         print('compare data: {}'.format(pretty_json(data)))
+        print('parsed passed: {}'.format(passed))
+        print('parsed score: {}'.format(score))
+        print('parsed threshold: {}'.format(threshold))
         return response
 
     def post(self, path, body, token_required):
@@ -171,8 +167,6 @@ class FaceApiDebugClient:
             if not self.access_token:
                 raise RuntimeError('access token is empty; call get_access_token first')
             headers['X-Face-AccessToken'] = self.access_token
-            if self.agent_id:
-                headers['X-Face-AgentId'] = self.agent_id
 
         url = self.base_url + path
         self.print_request_debug(url, headers, body, json_body)
@@ -209,9 +203,11 @@ class FaceApiDebugClient:
             raise RuntimeError('request failed: {}'.format(exc)) from exc
 
     @staticmethod
-    def check_success(response, api_name):
+    def check_response_code(response, api_name):
+        if response.get('code') is None:
+            return
         code = str(response.get('code'))
-        if code != '100001':
+        if code.lower() not in ('100001', '0', '200', 'success'):
             raise RuntimeError(
                 '{} failed, code={}, message={}, response={}'.format(
                     api_name,
@@ -245,19 +241,12 @@ class FaceApiDebugClient:
         print('SM2 sign: {}'.format(mask(sign, 12, 12)))
         return sign
 
-    def encrypt_image_base64(self, image_path, label):
-        if image_path:
-            path = Path(image_path).expanduser()
-            content = path.read_bytes()
-            print('{} path: {}'.format(label, path))
-        else:
-            content = base64.b64decode(PLACEHOLDER_IMAGE_BASE64)
-            print('{} path: not provided, using 1x1 placeholder image'.format(label))
-
-        image_base64 = base64.b64encode(content).decode('ascii')
+    def encrypt_fake_image_base64(self, label):
+        content = base64.b64decode(PLACEHOLDER_IMAGE_BASE64)
+        image_base64 = PLACEHOLDER_IMAGE_BASE64
         encrypted = self.sm4_encrypt_text(image_base64)
         print(
-            '{} bytes: {}, base64 length: {}, encrypted length: {}, encrypted sha256: {}'.format(
+            '{} fake image bytes: {}, base64 length: {}, encrypted length: {}, encrypted sha256: {}'.format(
                 label,
                 len(content),
                 len(image_base64),
@@ -289,6 +278,53 @@ class FaceApiDebugClient:
         print('SM4 key mode: utf-8 string shorter than 16 bytes, right padded with zeros')
         return key_bytes.ljust(16, b'\0')
 
+    @staticmethod
+    def parse_number(value):
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def find_first_number(cls, data, keys):
+        if not isinstance(data, dict):
+            return None
+        for key in keys:
+            value = cls.parse_number(data.get(key))
+            if value is not None:
+                return value
+        for value in data.values():
+            if isinstance(value, dict):
+                found = cls.find_first_number(value, keys)
+                if found is not None:
+                    return found
+        return None
+
+    @classmethod
+    def find_first_bool(cls, data, keys):
+        if not isinstance(data, dict):
+            return None
+        for key in keys:
+            value = data.get(key)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                value = value.lower()
+                if value in ('true', 'yes', '1', 'pass', 'passed', 'success'):
+                    return True
+                if value in ('false', 'no', '0', 'fail', 'failed'):
+                    return False
+            if isinstance(value, int):
+                return value == 1
+        for value in data.values():
+            if isinstance(value, dict):
+                found = cls.find_first_bool(value, keys)
+                if found is not None:
+                    return found
+        return None
+
 
 def main():
     args = parse_args()
@@ -300,9 +336,10 @@ def main():
         print('appId: {}'.format(client.app_id))
         print('signKey: {}'.format(mask(client.sign_key, 10, 8)))
         print('sm4Key: {}'.format(mask(client.sm4_key, 8, 6)))
-        print('agentId: {}'.format(client.agent_id))
-        if 'r' in client.app_id.lower():
-            print('WARN: appId contains "r"; please confirm it is not a copied OCR typo.')
+        print('threshold: {}'.format(client.threshold))
+        print('fake image sha256: {}'.format(
+            hashlib.sha256(base64.b64decode(PLACEHOLDER_IMAGE_BASE64)).hexdigest()
+        ))
 
         step('1. 获取访问令牌')
         if client.access_token:
@@ -313,8 +350,8 @@ def main():
         if args.token_only:
             return 0
 
-        step('2. 人脸 1:1 比对')
-        client.compare(args.image_a, args.image_b, args.seq)
+        step('2. 人脸 1:1 比对（fileA/fileB 使用同一张内置假图）')
+        client.compare(args.seq)
         return 0
     except Exception as exc:
         print('\nERROR: {}'.format(exc), file=sys.stderr)

@@ -419,7 +419,6 @@ POST <AI_FACE_BASE_URL>/openapi/face/compare
 - 请求体使用 SM3/SM2 生成 `X-Face-Data-Sign`。
 - 请求头包含 `X-Face-Clientid`。
 - 比对请求包含 `X-Face-AccessToken`。
-- 如果配置了 `AI_FACE_AGENT_ID`，比对请求包含 `X-Face-AgentId`。
 - 图片读取后 base64，再使用 SM4 加密。
 
 比对结果要求：
@@ -470,7 +469,6 @@ AI_FACE_BASE_URL: ""
 AI_FACE_APP_ID: ""
 AI_FACE_SIGN_KEY: ""
 AI_FACE_SM4_KEY: ""
-AI_FACE_AGENT_ID: "123456789"
 AI_FACE_ACCESS_TOKEN: ""
 AI_FACE_TOKEN_CACHE_SECONDS: 3600
 AI_FACE_PASS_THRESHOLD: 80
@@ -486,7 +484,6 @@ AI_FACE_PASS_THRESHOLD: 80
 - `AI_FACE_APP_ID`：AI 人脸平台 client id。
 - `AI_FACE_SIGN_KEY`：AI 人脸平台 SM2 私钥。
 - `AI_FACE_SM4_KEY`：AI 人脸平台图片加密密钥。
-- `AI_FACE_AGENT_ID`：AI 人脸平台代理标识，可为空。
 - `AI_FACE_ACCESS_TOKEN`：固定 accessToken，可为空；为空时自动调用 token 接口获取。
 - `AI_FACE_TOKEN_CACHE_SECONDS`：AI accessToken 最大缓存时间。
 - `AI_FACE_PASS_THRESHOLD`：AI 响应没有明确通过标记时使用的分数阈值。

@@ -185,13 +185,25 @@ class CommandViewSet(JMSBulkModelViewSet):
         ).order_by('-date_created')
 
         record_mapper = {}
+        failed_count_mapper = {}
+        failed_statuses = (
+            CommandFaceVerifyRecord.StatusChoices.failed,
+            CommandFaceVerifyRecord.StatusChoices.timeout,
+            CommandFaceVerifyRecord.StatusChoices.error,
+            CommandFaceVerifyRecord.StatusChoices.token_failed,
+            CommandFaceVerifyRecord.StatusChoices.camera_call_failed,
+        )
         for record in records:
             key = (str(record.session_id), record.run_command)
             record_mapper.setdefault(key, record)
+            if record.status in failed_statuses:
+                failed_count_mapper[key] = failed_count_mapper.get(key, 0) + 1
 
         for command in commands:
-            record = record_mapper.get((command.session, command.input[:4090]))
-            command.face_verify = get_face_verify_summary(record) if record else None
+            key = (command.session, command.input[:4090])
+            record = record_mapper.get(key)
+            failed_count = failed_count_mapper.get(key, 0)
+            command.face_verify = get_face_verify_summary(record, failed_count) if record else None
         return commands
 
     def get_queryset(self):
@@ -270,10 +282,12 @@ class InsecureCommandAlertAPI(generics.CreateAPIView):
         return Response({'msg': 'ok'})
 
 
-def get_face_verify_summary(record):
+def get_face_verify_summary(record, failed_count=0):
     return {
         'sign': record.sign,
         'status': record.status,
+        'is_success': record.status == record.StatusChoices.passed,
+        'failed_count': failed_count,
         'score': float(record.score) if record.score is not None else None,
         'threshold': float(record.threshold) if record.threshold is not None else None,
         'ticket_id': str(record.ticket_id) if record.ticket_id else None,

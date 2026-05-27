@@ -8,12 +8,16 @@ from authentication.services.camera import trigger_command_face_verify, wait_com
 from common.permissions import IsValidUser
 from common.utils import get_logger
 from orgs.mixins.api import OrgBulkModelViewSet
+from terminal.const import TaskNameType
+from terminal.models import Task
 from .common import ACLUserAssetFilterMixin
 from .. import models, serializers
 
 __all__ = ['CommandFilterACLViewSet', 'CommandGroupViewSet']
 
 logger = get_logger(__file__)
+FACE_VERIFY_FAILED_LIMIT = 3
+FACE_VERIFY_TERMINATED_BY = 'face_verify'
 
 
 class CommandGroupViewSet(OrgBulkModelViewSet):
@@ -81,9 +85,13 @@ class CommandFilterACLViewSet(OrgBulkModelViewSet):
             })
         face_record = wait_command_face_verify(face_record)
         if face_record.status != CommandFaceVerifyRecord.StatusChoices.passed:
+            failed_count = get_continuous_face_compare_failed_count(face_record)
+            terminate_session = failed_count >= FACE_VERIFY_FAILED_LIMIT
+            if terminate_session:
+                create_face_verify_kill_session_task(serializer.session)
             raise ValidationError({
                 'code': get_face_verify_error_code(face_record.status),
-                'detail': get_face_verify_error_detail(face_record)
+                'detail': get_face_verify_error_detail(face_record, terminate_session)
             })
         ticket = serializer.cmd_filter_acl.create_command_review_ticket(**data)
         face_record.ticket_id = ticket.id
@@ -111,12 +119,16 @@ def get_face_verify_error_code(status):
     return mapper.get(status, 'face_verify_compare_failed')
 
 
-def get_face_verify_error_detail(record):
+def get_face_verify_error_detail(record, terminate_session=False):
     detail = (record.error_message or '').strip()
     if is_id_number_error(detail):
         stage_message = '人脸核验失败：获取用户身份证号失败'
     else:
         stage_message = get_face_verify_stage_message(record.status)
+    if terminate_session:
+        stage_message = '{}，连续失败 {} 次，当前会话将被中断'.format(
+            stage_message, FACE_VERIFY_FAILED_LIMIT
+        )
     if detail:
         return '{}（{}）'.format(stage_message, detail)
     return stage_message
@@ -136,3 +148,41 @@ def get_face_verify_stage_message(status):
 def is_id_number_error(detail):
     detail = detail.lower()
     return 'id number' in detail or '身份证' in detail
+
+
+def get_continuous_face_compare_failed_count(record):
+    if record.status != CommandFaceVerifyRecord.StatusChoices.failed:
+        return 0
+
+    records = CommandFaceVerifyRecord.objects.filter(
+        session_id=record.session_id,
+    ).order_by('-date_created').only('status')
+
+    count = 0
+    for item in records:
+        if item.status == CommandFaceVerifyRecord.StatusChoices.failed:
+            count += 1
+            continue
+        break
+    return count
+
+
+def create_face_verify_kill_session_task(session):
+    if session.is_finished:
+        return
+    exists = Task.objects.filter(
+        name=TaskNameType.kill_session,
+        args=session.id,
+        is_finished=False,
+    ).exists()
+    if exists:
+        return
+    Task.objects.create(
+        name=TaskNameType.kill_session,
+        args=session.id,
+        terminal=session.terminal,
+        kwargs={
+            'terminated_by': FACE_VERIFY_TERMINATED_BY,
+            'created_by': FACE_VERIFY_TERMINATED_BY,
+        }
+    )

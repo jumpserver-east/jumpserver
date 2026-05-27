@@ -1,0 +1,162 @@
+FROM alpine:3.20.1 AS build-xpack
+ARG TARGETARCH
+
+COPY apps/xpack /opt/xpack
+
+RUN set -ex \
+    && mkdir -p /opt/xpack/plugins/license/bin \
+    && wget -O /opt/xpack/plugins/license/bin/fit2license https://fit2cloud-support.oss-cn-beijing.aliyuncs.com/xpack-license/validator_linux_${TARGETARCH} \
+    && chmod 755 /opt/xpack/plugins/license/bin/fit2license \
+    && rm -rf /opt/xpack/.git /opt/xpack/.github
+
+
+FROM python:3.11.14-slim-trixie AS stage-1
+ARG TARGETARCH
+# Install APT dependencies
+ARG DEPENDENCIES="                    \
+        ca-certificates               \
+        wget                          \
+        g++                           \
+        make                          \
+        pkg-config                    \
+        default-libmysqlclient-dev    \
+        freetds-dev                   \
+        gettext                       \
+        locales                       \
+        libkrb5-dev                   \
+        libldap2-dev                  \
+        libsasl2-dev"
+
+
+ARG APT_MIRROR=http://deb.debian.org
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=core \
+    set -ex \
+    && rm -f /etc/apt/apt.conf.d/docker-clean \
+    && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache \
+    && sed -i "s@http://.*.debian.org@${APT_MIRROR}@g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update > /dev/null \
+    && apt-get -y install --no-install-recommends ${DEPENDENCIES} \
+    && sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen \
+    && locale-gen \
+    && echo "no" | dpkg-reconfigure dash
+
+# Install bin tools
+ARG CHECK_VERSION=v1.0.5
+RUN set -ex \
+    && wget https://github.com/jumpserver-dev/healthcheck/releases/download/${CHECK_VERSION}/check-${CHECK_VERSION}-linux-${TARGETARCH}.tar.gz \
+    && tar -xf check-${CHECK_VERSION}-linux-${TARGETARCH}.tar.gz \
+    && mv check /usr/local/bin/ \
+    && chown root:root /usr/local/bin/check \
+    && chmod 755 /usr/local/bin/check \
+    && rm -f check-${CHECK_VERSION}-linux-${TARGETARCH}.tar.gz
+
+# Install Python dependencies
+WORKDIR /opt/jumpserver
+
+ARG PIP_MIRROR=https://pypi.org/simple
+ENV ANSIBLE_COLLECTIONS_PATHS=/opt/py3/lib/python3.11/site-packages/ansible_collections
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    PATH=/opt/py3/bin:$PATH
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=3.4.5
+
+RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=requirements/clean_site_packages.sh,target=clean_site_packages.sh \
+    --mount=type=bind,source=requirements/collections.yml,target=collections.yml \
+    --mount=type=bind,source=requirements/static_files.sh,target=utils/static_files.sh \
+    set -ex \
+    && pip install uv -i${PIP_MIRROR} \
+    && uv venv \
+    && uv pip install -i${PIP_MIRROR} -r pyproject.toml \
+    && ln -sf $(pwd)/.venv /opt/py3 \
+    && ansible-galaxy collection install -r collections.yml --force --ignore-certs \
+    && bash utils/static_files.sh \
+    && bash clean_site_packages.sh
+
+RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    set -ex \
+    && uv pip install -i${PIP_MIRROR} --group xpack \
+    && playwright install chromium  --with-deps --only-shell
+
+ARG VERSION
+
+ADD . .
+
+RUN echo > /opt/jumpserver/config.yml \
+    && \
+    if [ -n "${VERSION}" ]; then \
+        sed -i "s@VERSION = .*@VERSION = '${VERSION}'@g" apps/jumpserver/const.py; \
+    fi
+
+RUN set -ex \
+    && export SECRET_KEY=$(head -c100 < /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c 48) \
+    && . /opt/py3/bin/activate \
+    && cd apps \
+    && python manage.py compilemessages
+
+
+FROM python:3.11-slim-trixie
+ENV LANG=en_US.UTF-8 \
+    PATH=/opt/py3/bin:$PATH
+
+ARG DEPENDENCIES="                    \
+        libldap2-dev                  \
+        libx11-dev"
+
+ARG TOOLS="                           \
+        cron                          \
+        ca-certificates               \
+        default-libmysqlclient-dev    \
+        openssh-client                \
+        sshpass                       \
+        nmap                          \
+        bubblewrap                    \
+        curl                          \
+        iputils-ping                  \
+        netcat-openbsd                \
+        nmap                          \
+        telnet                        \
+        vim                           \
+        postgresql-client             \
+        wget                          \
+        poppler-utils"
+
+ARG APT_MIRROR=http://deb.debian.org
+
+RUN set -ex \
+    && sed -i "s@http://.*.debian.org@${APT_MIRROR}@g" /etc/apt/sources.list.d/debian.sources \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && apt-get update > /dev/null \
+    && apt-get -y install --no-install-recommends ${DEPENDENCIES} \
+    && apt-get -y install --no-install-recommends ${TOOLS} \
+    && mkdir -p /root/.ssh/ \
+    && echo "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null\n\tCiphers +aes128-cbc\n\tKexAlgorithms +diffie-hellman-group1-sha1\n\tHostKeyAlgorithms +ssh-rsa" > /root/.ssh/config \
+    && echo "no" | dpkg-reconfigure dash \
+    && apt-get clean all \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "0 3 * * * root find /tmp -type f -mtime +1 -size +1M -exec rm -f {} \; && date > /tmp/clean.log" > /etc/cron.d/cleanup_tmp \
+    && chmod 0644 /etc/cron.d/cleanup_tmp
+
+COPY --from=stage-1 /opt /opt
+COPY --from=stage-1 /usr/local/bin /usr/local/bin
+COPY --from=stage-1 /opt/jumpserver/apps/libs/ansible/ansible.cfg /etc/ansible/
+COPY --from=build-xpack /opt/xpack /opt/jumpserver/apps/xpack
+
+WORKDIR /opt/jumpserver
+
+ARG VERSION
+ENV VERSION=$VERSION
+
+VOLUME /opt/jumpserver/data
+
+ENTRYPOINT ["./entrypoint.sh"]
+
+EXPOSE 8080
+
+STOPSIGNAL SIGQUIT
+
+CMD ["start", "all"]

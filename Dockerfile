@@ -132,7 +132,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=core-apt \
 
 ARG RECEPTOR_VERSION=v1.4.5
 RUN set -ex \
-    && wget -O /opt/receptor.tar.gz https://github.com/ansible/receptor/releases/download/${RECEPTOR_VERSION}/receptor_${RECEPTOR_VERSION/v/}_linux_${TARGETARCH}.tar.gz \
+    && RECEPTOR_URL="https://github.com/ansible/receptor/releases/download/${RECEPTOR_VERSION}/receptor_${RECEPTOR_VERSION#v}_linux_${TARGETARCH}.tar.gz" \
+    && for i in 1 2 3; do wget --header="Cache-Control: no-cache" -O /opt/receptor.tar.gz "${RECEPTOR_URL}?retry=${i}" && break || { rm -f /opt/receptor.tar.gz; sleep 5; }; done \
+    && test -s /opt/receptor.tar.gz \
     && tar -xf /opt/receptor.tar.gz -C /usr/local/bin/ \
     && chown root:root /usr/local/bin/receptor \
     && chmod 755 /usr/local/bin/receptor \
