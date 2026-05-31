@@ -25,9 +25,12 @@ def decode_base64_image(value):
     if ',' in value and value.lower().startswith('data:'):
         value = value.split(',', 1)[1]
     try:
-        return base64.b64decode(value, validate=True)
+        content = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
         raise serializers.ValidationError(_('Invalid base64 image data'))
+    if not content:
+        raise serializers.ValidationError(_('Image data is empty'))
+    return content
 
 
 def get_image_ext(content):
@@ -48,7 +51,7 @@ def compress_image(content):
     except Exception:
         raise serializers.ValidationError(_('Invalid image data'))
 
-    for _ in range(80):
+    for attempt in range(80):
         data = compress_image_with_qualities(image, JPEG_QUALITIES)
         if data:
             return data

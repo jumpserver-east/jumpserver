@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import secrets
 from decimal import Decimal
 from pathlib import Path
@@ -10,8 +11,16 @@ from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.utils.translation import gettext_lazy as _
 
+from common.utils import get_logger
 
+
+logger = get_logger(__file__)
 AI_FACE_TOKEN_CACHE_KEY = 'face_verify:ai_face:token'
+MAX_LOG_TEXT_LENGTH = 2048
+SENSITIVE_LOG_PATTERN = re.compile(
+    r'(?i)([\'"]?(?:authorization|accessToken|access_token|token|X-Face-AccessToken|fileA|fileB)'
+    r'[\'"]?\s*[:=]\s*[\'"]?)[^\'",\s}]+'
+)
 SM2_P = 0xfffffffeffffffffffffffffffffffffffffffff00000000ffffffffffffffff
 SM2_A = 0xfffffffeffffffffffffffffffffffffffffffff00000000fffffffffffffffc
 SM2_B = 0x28e9fa9e9d9f5e344d5a9e4bcf6509a7f39789f515ab8f92ddbcbd414d940e93
@@ -62,6 +71,20 @@ class FaceCompareResult:
         self.response = response
 
 
+def redact_log_text(value):
+    text = str(value or '')
+    text = SENSITIVE_LOG_PATTERN.sub(r'\1***', text)
+    if len(text) > MAX_LOG_TEXT_LENGTH:
+        text = '{}...(truncated)'.format(text[:MAX_LOG_TEXT_LENGTH])
+    return text
+
+
+def format_response_for_log(response):
+    if response is None:
+        return ''
+    return redact_log_text(response.text)
+
+
 class FaceClient:
     json_type = 'application/json;charset=UTF-8'
     timeout = 30
@@ -71,7 +94,6 @@ class FaceClient:
         self.app_id = settings.AI_FACE_APP_ID
         self.sign_key = settings.AI_FACE_SIGN_KEY
         self.sm4_key = settings.AI_FACE_SM4_KEY
-        self.access_token = settings.AI_FACE_ACCESS_TOKEN
 
     def compare(self, face_image_path, photo_image_path, seq=''):
         self.validate_config()
@@ -102,8 +124,6 @@ class FaceClient:
             raise FaceCompareError(e)
 
     def get_access_token(self):
-        if self.access_token:
-            return self.access_token
         cached = cache.get(AI_FACE_TOKEN_CACHE_KEY)
         if cached:
             return cached
@@ -113,6 +133,10 @@ class FaceClient:
         token_data = response.get('data') or {}
         token = token_data.get('accessToken') or token_data.get('access_token') or token_data.get('token')
         if not token:
+            logger.warning(
+                'Get AI face access token failed: response=%s',
+                redact_log_text(response)
+            )
             raise FaceCompareError(_('Get AI face access token failed'), response=response)
         ttl = (
             token_data.get('exp') or token_data.get('expires_in') or
@@ -145,9 +169,26 @@ class FaceClient:
                 headers=headers,
                 timeout=self.timeout,
             )
+        except Exception as e:
+            logger.warning('AI face request failed: path=%s error=%s', path, e)
+            raise FaceCompareError(e)
+
+        try:
             response.raise_for_status()
+        except Exception as e:
+            logger.warning(
+                'AI face response status failed: path=%s status=%s response=%s error=%s',
+                path, response.status_code, format_response_for_log(response), e
+            )
+            raise FaceCompareError(e)
+
+        try:
             return response.json()
         except Exception as e:
+            logger.warning(
+                'AI face response invalid: path=%s status=%s response=%s error=%s',
+                path, response.status_code, format_response_for_log(response), e
+            )
             raise FaceCompareError(e)
 
     @staticmethod
@@ -183,6 +224,7 @@ class FaceClient:
     @staticmethod
     def parse_compare_result(response):
         if not is_response_success(response):
+            logger.warning('AI face compare response code failed: response=%s', redact_log_text(response))
             raise FaceCompareError(_('AI face response code is not success'), response=response)
         data = response.get('data') or {}
         score = find_first_number(data, ('score', 'similarity', 'similar', 'confidence'))
@@ -195,6 +237,7 @@ class FaceClient:
         if passed is None and score is not None:
             passed = score >= threshold
         if passed is None:
+            logger.warning('AI face compare response missing result: response=%s', redact_log_text(response))
             raise FaceCompareError(_('AI face response does not contain compare result'), response=response)
         return FaceCompareResult(passed, score, threshold, response)
 

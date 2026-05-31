@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -36,26 +37,7 @@ class CameraPhotoCallbackApi(APIView):
             if record.status != CommandFaceVerifyRecord.StatusChoices.waiting_photo:
                 return self.get_response(record, msg='photo already pushed')
 
-            face_content = decode_base64_image(data['faceStr'])
-            photo_content = decode_base64_image(data['photoStr'])
-            face_info = save_face_verify_image(record, face_content, 'face')
-            photo_info = save_face_verify_image(record, photo_content, 'photo')
-
-            record.face_image_path = face_info['path']
-            record.face_image_sha256 = face_info['sha256']
-            record.face_image_size = face_info['size']
-            record.photo_image_path = photo_info['path']
-            record.photo_image_sha256 = photo_info['sha256']
-            record.photo_image_size = photo_info['size']
-            record.status = CommandFaceVerifyRecord.StatusChoices.photo_received
-            record.date_callback = timezone.now()
-            record.error_message = ''
-            record.save(update_fields=[
-                'face_image_path', 'face_image_sha256', 'face_image_size',
-                'photo_image_path', 'photo_image_sha256', 'photo_image_size',
-                'status', 'date_callback', 'error_message', 'date_updated',
-            ])
-            should_compare = True
+            should_compare = self.save_callback_images(record, data)
         if should_compare:
             self.compare_face(record)
         return self.get_response(record)
@@ -80,6 +62,9 @@ class CameraPhotoCallbackApi(APIView):
             record.status = CommandFaceVerifyRecord.StatusChoices.error
             record.error_message = e.message
             record.ai_response = summarize_ai_response(e.response)
+        except Exception as e:
+            record.status = CommandFaceVerifyRecord.StatusChoices.error
+            record.error_message = str(e)
         record.date_compared = timezone.now()
         if record.status in (
             CommandFaceVerifyRecord.StatusChoices.passed,
@@ -91,6 +76,46 @@ class CameraPhotoCallbackApi(APIView):
             'score', 'threshold', 'ai_response', 'status', 'error_message',
             'date_compared', 'date_finished', 'date_updated',
         ])
+
+    def save_callback_images(self, record, data):
+        if not data['faceStr'].strip():
+            self.finish_with_error(record, 'camera face image is empty')
+            return False
+        try:
+            face_content = decode_base64_image(data['faceStr'])
+            photo_content = decode_base64_image(data['photoStr'])
+            face_info = save_face_verify_image(record, face_content, 'face')
+            photo_info = save_face_verify_image(record, photo_content, 'photo')
+        except serializers.ValidationError as e:
+            self.finish_with_error(record, get_validation_error_message(e.detail))
+            return False
+        except Exception as e:
+            self.finish_with_error(record, str(e))
+            return False
+
+        record.face_image_path = face_info['path']
+        record.face_image_sha256 = face_info['sha256']
+        record.face_image_size = face_info['size']
+        record.photo_image_path = photo_info['path']
+        record.photo_image_sha256 = photo_info['sha256']
+        record.photo_image_size = photo_info['size']
+        record.status = CommandFaceVerifyRecord.StatusChoices.photo_received
+        record.date_callback = timezone.now()
+        record.error_message = ''
+        record.save(update_fields=[
+            'face_image_path', 'face_image_sha256', 'face_image_size',
+            'photo_image_path', 'photo_image_sha256', 'photo_image_size',
+            'status', 'date_callback', 'error_message', 'date_updated',
+        ])
+        return True
+
+    @staticmethod
+    def finish_with_error(record, error_message):
+        record.status = CommandFaceVerifyRecord.StatusChoices.error
+        record.error_message = error_message
+        record.date_callback = timezone.now()
+        record.date_finished = timezone.now()
+        record.save(update_fields=['status', 'error_message', 'date_callback', 'date_finished', 'date_updated'])
 
     @staticmethod
     def get_response(record, msg='ok'):
@@ -117,3 +142,11 @@ def summarize_ai_response(response):
         'msg': response.get('msg') or response.get('message'),
         'data': data if isinstance(data, dict) else {},
     }
+
+
+def get_validation_error_message(detail):
+    if isinstance(detail, (list, tuple)):
+        return '; '.join(str(item) for item in detail)
+    if isinstance(detail, dict):
+        return '; '.join('{}: {}'.format(key, value) for key, value in detail.items())
+    return str(detail)

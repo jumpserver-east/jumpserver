@@ -588,7 +588,6 @@ class Config(dict):
         'AI_FACE_APP_ID': '',
         'AI_FACE_SIGN_KEY': '',
         'AI_FACE_SM4_KEY': '',
-        'AI_FACE_ACCESS_TOKEN': '',
         'AI_FACE_TOKEN_CACHE_SECONDS': 3600,
         'AI_FACE_PASS_THRESHOLD': 0.8,
 

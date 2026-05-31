@@ -14,6 +14,25 @@ logger = get_logger(__file__)
 
 ID_NUMBER_PATTERN = re.compile(r'\d{17}[\dXx]')
 CAMERA_TOKEN_CACHE_KEY = 'face_verify:camera:token'
+MAX_LOG_TEXT_LENGTH = 2048
+SENSITIVE_LOG_PATTERN = re.compile(
+    r'(?i)([\'"]?(?:authorization|accessToken|access_token|token|signData|idNumber|faceStr|photoStr)'
+    r'[\'"]?\s*[:=]\s*[\'"]?)[^\'",\s}]+'
+)
+
+
+def redact_log_text(value):
+    text = str(value or '')
+    text = SENSITIVE_LOG_PATTERN.sub(r'\1***', text)
+    if len(text) > MAX_LOG_TEXT_LENGTH:
+        text = '{}...(truncated)'.format(text[:MAX_LOG_TEXT_LENGTH])
+    return text
+
+
+def format_response_for_log(response):
+    if response is None:
+        return ''
+    return redact_log_text(response.text)
 
 
 class CameraSystemError(Exception):
@@ -63,13 +82,26 @@ class CameraSystemClient:
         payload = {'signData': settings.CAMERA_SYSTEM_SIGN_DATA}
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)
+        except Exception as e:
+            logger.warning('Get camera token request failed: url=%s error=%s', url, e)
+            raise CameraTokenError(e)
+
+        try:
             data = response.json()
         except Exception as e:
+            logger.warning(
+                'Get camera token response invalid: url=%s status=%s response=%s error=%s',
+                url, response.status_code, format_response_for_log(response), e
+            )
             raise CameraTokenError(e)
 
         token_data = data.get('data') or {}
         token = token_data.get('token')
         if data.get('code') != 200 or not token:
+            logger.warning(
+                'Get camera token failed: url=%s status=%s response=%s',
+                url, response.status_code, format_response_for_log(response)
+            )
             raise CameraTokenError(data.get('msg') or _('Get camera token failed'))
 
         expires_in = token_data.get('expires_in') or settings.CAMERA_TOKEN_CACHE_SECONDS
@@ -96,12 +128,32 @@ class CameraSystemClient:
         )
         try:
             response = requests.get(url, headers=headers, params=params, timeout=self.timeout)
+        except Exception as e:
+            logger.warning(
+                'Call camera request failed: url=%s machine_ip=%s user_name=%s id_number=%s error=%s',
+                url, machine_ip, user_name, mask_id_number(id_number), e
+            )
+            raise CameraSystemError(e)
+
+        try:
             data = response.json()
         except Exception as e:
+            logger.warning(
+                'Call camera response invalid: url=%s machine_ip=%s user_name=%s id_number=%s '
+                'status=%s response=%s error=%s',
+                url, machine_ip, user_name, mask_id_number(id_number),
+                response.status_code, format_response_for_log(response), e
+            )
             raise CameraSystemError(e)
 
         sign = (data.get('data') or {}).get('sign')
         if data.get('code') != 200 or not sign:
+            logger.warning(
+                'Call camera failed: url=%s machine_ip=%s user_name=%s id_number=%s '
+                'status=%s response=%s',
+                url, machine_ip, user_name, mask_id_number(id_number),
+                response.status_code, format_response_for_log(response)
+            )
             raise CameraSystemError(data.get('msg') or _('Call camera failed'))
         return sign
 

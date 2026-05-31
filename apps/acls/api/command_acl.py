@@ -1,3 +1,5 @@
+import re
+
 from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -18,6 +20,10 @@ __all__ = ['CommandFilterACLViewSet', 'CommandGroupViewSet']
 logger = get_logger(__file__)
 FACE_VERIFY_FAILED_LIMIT = 3
 FACE_VERIFY_TERMINATED_BY = 'face_verify'
+MAX_FACE_VERIFY_DETAIL_LENGTH = 80
+SENSITIVE_DETAIL_PATTERN = re.compile(
+    r'(?i)(authorization|accessToken|access_token|token|signData|idNumber|faceStr|photoStr)'
+)
 
 
 class CommandGroupViewSet(OrgBulkModelViewSet):
@@ -91,7 +97,7 @@ class CommandFilterACLViewSet(OrgBulkModelViewSet):
                 create_face_verify_kill_session_task(serializer.session)
             raise ValidationError({
                 'code': get_face_verify_error_code(face_record.status),
-                'detail': get_face_verify_error_detail(face_record, terminate_session)
+                'detail': get_face_verify_error_detail(face_record, failed_count, terminate_session)
             })
         ticket = serializer.cmd_filter_acl.create_command_review_ticket(**data)
         face_record.ticket_id = ticket.id
@@ -119,19 +125,56 @@ def get_face_verify_error_code(status):
     return mapper.get(status, 'face_verify_compare_failed')
 
 
-def get_face_verify_error_detail(record, terminate_session=False):
-    detail = (record.error_message or '').strip()
+def get_face_verify_error_detail(record, failed_count=0, terminate_session=False):
+    detail = normalize_face_verify_error_detail(record.error_message)
     if is_id_number_error(detail):
         stage_message = '人脸核验失败：获取用户身份证号失败'
+    elif is_camera_face_missing_error(detail):
+        stage_message = '人脸核验失败：拍照系统未返回用户人脸信息'
+    elif is_callback_image_error(detail):
+        stage_message = '人脸核验失败：拍照系统回调图片异常'
     else:
         stage_message = get_face_verify_stage_message(record.status)
-    if terminate_session:
-        stage_message = '{}，连续失败 {} 次，当前会话将被中断'.format(
-            stage_message, FACE_VERIFY_FAILED_LIMIT
+    if record.status == CommandFaceVerifyRecord.StatusChoices.failed:
+        stage_message = '{}，当前连续失败 {} 次，连续失败 {} 次将中断会话'.format(
+            stage_message, failed_count, FACE_VERIFY_FAILED_LIMIT
         )
+    if terminate_session:
+        stage_message = '{}，当前会话将被中断'.format(stage_message)
     if detail:
         return '{}（{}）'.format(stage_message, detail)
     return stage_message
+
+
+def normalize_face_verify_error_detail(detail):
+    detail = str(detail or '').strip()
+    if not detail or SENSITIVE_DETAIL_PATTERN.search(detail):
+        return ''
+    if is_low_level_exception_detail(detail):
+        return ''
+    detail = detail.replace('\r', ' ').replace('\n', ' ')
+    detail = re.sub(r'\s+', ' ', detail)
+    if len(detail) > MAX_FACE_VERIFY_DETAIL_LENGTH:
+        detail = '{}...'.format(detail[:MAX_FACE_VERIFY_DETAIL_LENGTH])
+    return detail
+
+
+def is_low_level_exception_detail(detail):
+    detail_lower = detail.lower()
+    markers = (
+        'httpconnectionpool',
+        'httpsconnectionpool',
+        'max retries exceeded',
+        'connection refused',
+        'connect timeout',
+        'read timed out',
+        'newconnectionerror',
+        'jsondecodeerror',
+        'expecting value',
+        'badstatusline',
+        'traceback',
+    )
+    return any(marker in detail_lower for marker in markers)
 
 
 def get_face_verify_stage_message(status):
@@ -139,8 +182,8 @@ def get_face_verify_stage_message(status):
         CommandFaceVerifyRecord.StatusChoices.token_failed: '人脸核验失败：获取拍照系统 token 失败',
         CommandFaceVerifyRecord.StatusChoices.camera_call_failed: '人脸核验失败：调用拍照系统失败',
         CommandFaceVerifyRecord.StatusChoices.timeout: '人脸核验失败：等待拍照系统回调超时',
-        CommandFaceVerifyRecord.StatusChoices.failed: '人脸核验失败：AI 人脸比对不通过',
-        CommandFaceVerifyRecord.StatusChoices.error: '人脸核验失败：AI 人脸平台配置缺失或调用异常',
+        CommandFaceVerifyRecord.StatusChoices.failed: '人脸核验失败：人脸比对不通过',
+        CommandFaceVerifyRecord.StatusChoices.error: '人脸核验失败：人脸比对服务配置缺失或调用异常',
     }
     return mapper.get(status, '人脸核验失败：未知异常')
 
@@ -148,6 +191,29 @@ def get_face_verify_stage_message(status):
 def is_id_number_error(detail):
     detail = detail.lower()
     return 'id number' in detail or '身份证' in detail
+
+
+def is_callback_image_error(detail):
+    detail = detail.lower()
+    markers = (
+        'base64 image',
+        'image data',
+        'invalid image',
+        'image is too large',
+        '图片',
+    )
+    return any(marker in detail for marker in markers)
+
+
+def is_camera_face_missing_error(detail):
+    detail = detail.lower()
+    markers = (
+        'camera face image is empty',
+        'face image is empty',
+        'facestr is empty',
+        '人脸信息',
+    )
+    return any(marker in detail for marker in markers)
 
 
 def get_continuous_face_compare_failed_count(record):
