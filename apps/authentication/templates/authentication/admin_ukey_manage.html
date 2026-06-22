@@ -1,0 +1,822 @@
+{% extends '_base_only_content.html' %}
+{% load static %}
+{% block custom_head_css_js %}
+    <style>
+        /* 管理页面用宽布局，覆盖 _base_only_content 的窄卡片 */
+        .passwordBox {
+            max-width: 1080px;
+            padding-top: 40px;
+        }
+
+        .ibox-content {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 16px rgba(0, 0, 0, .06);
+            padding: 28px 32px 32px;
+        }
+
+        .ukey-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+
+        .ukey-header .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .ukey-header .back-btn {
+            border-radius: 8px;
+            padding: 7px 16px;
+            height: 38px;
+        }
+
+        .ukey-header .back-btn .fa {
+            margin-right: 5px;
+        }
+
+        .ukey-header .ukey-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #1ab394, #18a689);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .ukey-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .ukey-header .subtitle {
+            margin: 2px 0 0;
+            color: #98a6ad;
+            font-size: 13px;
+        }
+
+        /* 工具栏 */
+        .ukey-toolbar {
+            display: flex;
+            gap: 10px;
+            margin: 22px 0 18px;
+            flex-wrap: wrap;
+        }
+
+        .ukey-search-wrap {
+            position: relative;
+            flex: 1;
+            min-width: 240px;
+        }
+
+        .ukey-search-wrap .fa-search {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #b3bcc4;
+            pointer-events: none;
+        }
+
+        .ukey-search-wrap .search-input {
+            padding-left: 34px;
+            height: 38px;
+            border-radius: 8px;
+        }
+
+        .ukey-toolbar .btn {
+            height: 38px;
+            border-radius: 8px;
+            padding: 0 18px;
+        }
+
+        .ukey-toolbar .btn .fa {
+            margin-right: 5px;
+        }
+
+        /* 表格 */
+        #ukey-table {
+            width: 100%;
+            table-layout: fixed;
+            margin-bottom: 0;
+            border: 1px solid #eef0f2;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #ukey-table thead th {
+            background: #f7f9fa;
+            border-bottom: 1px solid #eef0f2;
+            border-top: none;
+            color: #5e6e77;
+            font-weight: 600;
+            font-size: 13px;
+            padding: 12px 14px;
+        }
+
+        #ukey-table tbody td {
+            padding: 12px 14px;
+            word-break: break-all;
+            vertical-align: middle;
+            border-top: 1px solid #f1f3f4;
+            font-size: 13px;
+        }
+
+        #ukey-table tbody tr:hover {
+            background: #f9fbfb;
+        }
+
+        .ukey-serial {
+            font-family: Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #4a5a63;
+        }
+
+        .ukey-username {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .ukey-actions {
+            white-space: nowrap;
+            word-break: keep-all;
+        }
+
+        .ukey-actions .btn {
+            border-radius: 6px;
+            padding: 3px 10px;
+            margin-right: 6px;
+        }
+
+        .empty-row td {
+            text-align: center;
+            color: #b3bcc4;
+            padding: 40px 0 !important;
+        }
+
+        .empty-row .fa {
+            display: block;
+            font-size: 30px;
+            margin-bottom: 8px;
+            opacity: .5;
+        }
+
+        /* 分页 */
+        .pagination-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 18px;
+        }
+
+        .pagination-bar .total-count {
+            color: #98a6ad;
+            font-size: 13px;
+        }
+
+        .pagination-bar .btn {
+            border-radius: 8px;
+        }
+
+        /* 自定义弹窗：不依赖 Bootstrap modal，避免与 _base_only_content 的 flex 布局 /
+           animate.css transform 产生定位冲突 */
+        .ukey-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 30, 0.45);
+            z-index: 2000;
+        }
+
+        .ukey-overlay.open {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: ukeyFade .15s ease;
+        }
+
+        @keyframes ukeyFade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .ukey-dialog {
+            background: #fff;
+            border-radius: 12px;
+            width: 460px;
+            max-width: calc(100% - 40px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+
+        .ukey-dialog .dialog-header {
+            padding: 16px 22px;
+            border-bottom: 1px solid #eef0f2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ukey-dialog .dialog-header h4 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .ukey-dialog .dialog-body {
+            padding: 22px;
+        }
+
+        .ukey-dialog .form-group {
+            margin-bottom: 18px;
+        }
+
+        .ukey-dialog .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .ukey-dialog label {
+            font-weight: 600;
+            color: #5e6e77;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .ukey-dialog .form-control {
+            height: 38px;
+            border-radius: 8px;
+        }
+
+        .ukey-dialog .form-control[readonly] {
+            background: #f7f9fa;
+            color: #6b7a82;
+        }
+
+        .ukey-dialog .read-key-btn {
+            border-radius: 8px;
+            border: 1px dashed #c5cdd2;
+            background: #fafbfc;
+            color: #1ab394;
+            font-weight: 600;
+            height: 40px;
+        }
+
+        .ukey-dialog .read-key-btn:hover {
+            background: #f0faf7;
+            border-color: #1ab394;
+        }
+
+        .ukey-dialog .read-key-btn .fa {
+            margin-right: 6px;
+        }
+
+        .ukey-dialog .field-hint {
+            display: block;
+            color: #98a6ad;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .ukey-dialog .dialog-footer {
+            padding: 14px 22px;
+            border-top: 1px solid #eef0f2;
+            text-align: right;
+            background: #fafbfc;
+        }
+
+        .ukey-dialog .dialog-footer .btn {
+            border-radius: 8px;
+            padding: 7px 18px;
+        }
+
+        .ukey-dialog .close-x {
+            border: none;
+            background: none;
+            font-size: 22px;
+            line-height: 1;
+            color: #b3bcc4;
+            cursor: pointer;
+        }
+
+        .ukey-dialog .close-x:hover {
+            color: #5e6e77;
+        }
+
+        /* 用户名自动补全下拉 */
+        .user-autocomplete {
+            position: relative;
+        }
+
+        .user-suggestions {
+            position: absolute;
+            top: 66px; /* label + input 高度，紧贴输入框下方 */
+            left: 0;
+            right: 0;
+            z-index: 10;
+            max-height: 220px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 4px;
+            list-style: none;
+            background: #fff;
+            border: 1px solid #e7eaec;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+            display: none;
+        }
+
+        .user-suggestions li {
+            padding: 8px 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-radius: 6px;
+        }
+
+        .user-suggestions li:hover,
+        .user-suggestions li.active {
+            background: #f0faf7;
+        }
+
+        .user-suggestions li .suggestion-username {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .user-suggestions li .suggestion-name {
+            color: #98a6ad;
+            margin-left: 6px;
+            font-size: 12px;
+        }
+
+        .user-suggestions li.suggestion-empty {
+            color: #b3bcc4;
+            cursor: default;
+            text-align: center;
+        }
+
+        .user-suggestions li.suggestion-empty:hover {
+            background: none;
+        }
+    </style>
+{% endblock %}
+
+{% block title %}{% endblock %}
+
+{% block content %}
+    <script src="{% static 'js/mToken.js' %}"></script>
+
+    <div class="ukey-header">
+        <div class="header-left">
+            <span class="ukey-icon"><i class="fa fa-usb"></i></span>
+            <div>
+                <h2>USBKey 管理</h2>
+                <p class="subtitle">管理所有用户的 USBKey 绑定信息</p>
+            </div>
+        </div>
+        <a class="btn btn-default back-btn" href="/ui/">
+            <i class="fa fa-arrow-left"></i>返回控制台
+        </a>
+    </div>
+
+    <div class="ukey-toolbar">
+        <div class="ukey-search-wrap">
+            <i class="fa fa-search"></i>
+            <input id="search-input" type="text" class="form-control search-input"
+                   placeholder="按用户名或 USBKey 序列号搜索">
+        </div>
+        <button class="btn btn-default" type="button" onclick="doSearch()">
+            <i class="fa fa-search"></i>搜索
+        </button>
+        <button class="btn btn-primary" type="button" onclick="openCreateModal()">
+            <i class="fa fa-plus"></i>新增绑定
+        </button>
+    </div>
+
+    <table id="ukey-table" class="table">
+        <thead>
+        <tr>
+            <th style="width: 16%">用户名</th>
+            <th style="width: 16%">姓名</th>
+            <th style="width: 26%">USBKey 序列号</th>
+            <th style="width: 20%">创建时间</th>
+            <th style="width: 22%">操作</th>
+        </tr>
+        </thead>
+        <tbody id="ukey-tbody"></tbody>
+    </table>
+
+    <div class="pagination-bar">
+        <span id="total-count" class="total-count"></span>
+        <div>
+            <button id="prev-btn" class="btn btn-default btn-sm" type="button" onclick="goPrev()" disabled>
+                <i class="fa fa-angle-left"></i> 上一页
+            </button>
+            <button id="next-btn" class="btn btn-default btn-sm" type="button" onclick="goNext()" disabled>
+                下一页 <i class="fa fa-angle-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 新增/编辑 弹窗（自定义 overlay） -->
+    <div class="ukey-overlay" id="ukey-modal">
+        <div class="ukey-dialog">
+            <div class="dialog-header">
+                <h4 id="modal-title">新增绑定</h4>
+                <button type="button" class="close-x" onclick="closeModal()" aria-label="Close">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <input type="hidden" id="f-id">
+                <div class="form-group user-autocomplete">
+                    <label>用户</label>
+                    <input type="hidden" id="f-user">
+                    <input type="text" id="f-user-search" class="form-control" autocomplete="off"
+                           placeholder="输入用户名或姓名搜索">
+                    <ul class="user-suggestions" id="f-user-suggestions"></ul>
+                    <small class="field-hint">输入关键字后从下拉列表中选择用户</small>
+                </div>
+                <div class="form-group">
+                    <label>USBKey 信息</label>
+                    <button type="button" class="btn btn-default btn-block read-key-btn" onclick="readUSBKey()">
+                        <i class="fa fa-usb"></i>读取 USBKey 信息
+                    </button>
+                    <small class="field-hint">插入 USBKey 后点击，自动填充序列号和公钥</small>
+                </div>
+                <div class="form-group">
+                    <label>USBKey 序列号</label>
+                    <input type="text" id="f-serial" class="form-control" readonly
+                           placeholder="读取 USBKey 后自动填充">
+                </div>
+                <div class="form-group">
+                    <label>USBKey 公钥</label>
+                    <input type="text" id="f-pubkey" class="form-control" readonly
+                           placeholder="读取 USBKey 后自动填充">
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button type="button" class="btn btn-default" onclick="closeModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveUKey()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiUrl = '/api/v1/users/admin-ukeys/';
+        const pageSize = 15;
+        let offset = 0;
+        let totalCount = 0;
+        let keyword = '';
+        let currentRows = {};
+
+        function openModal() {
+            $('#ukey-modal').addClass('open');
+        }
+
+        function closeModal() {
+            $('#ukey-modal').removeClass('open');
+        }
+
+        // ----- USBKey 硬件读取（参考 bind_ukey 页面） -----
+        const token = new mToken("mTokenPlugin");
+
+        function enumDevice() {
+            let ret = token.SOF_LoadLibrary(token.GM3000);
+            if (ret !== 0) {
+                toastr.error("加载插件失败，错误码：" + token.SOF_GetLastError());
+                return null;
+            }
+            const deviceName = token.SOF_EnumDevice();
+            if (deviceName == null) {
+                toastr.error("未检测到 USBKey");
+                return null;
+            }
+            ret = token.SOF_GetDeviceInstance(deviceName[0], "");
+            if (ret !== 0) {
+                toastr.error("绑定应用失败，请检查 Key 是否已初始化，错误码：" + token.SOF_GetLastError());
+                return null;
+            }
+            return deviceName;
+        }
+
+        function readUSBKey() {
+            const device = enumDevice();
+            if (device == null) {
+                return;
+            }
+            const container = token.SOF_EnumCertContiner().split("||");
+            if (container.length === 0) {
+                toastr.error("未找到容器，错误码：" + token.SOF_GetLastError());
+                return;
+            }
+            const strPubKey = token.SOF_ExportPubKey(container[0], 1, 3);
+            if (strPubKey == null) {
+                toastr.error("导出公钥失败，错误码：" + token.SOF_GetLastError());
+                return;
+            }
+            $('#f-serial').val(device[0]);
+            $('#f-pubkey').val(strPubKey);
+            toastr.success("USBKey 信息读取成功");
+        }
+
+        function buildUrl() {
+            let url = apiUrl + '?limit=' + pageSize + '&offset=' + offset;
+            if (keyword) {
+                url += '&q=' + encodeURIComponent(keyword);
+            }
+            return url;
+        }
+
+        function loadData() {
+            $.ajax({
+                url: buildUrl(),
+                method: 'GET',
+                dataType: 'json'
+            }).done(function (data) {
+                // limit 参数下返回分页结构 {count, results}
+                const results = data.results || [];
+                totalCount = data.count || 0;
+                renderTable(results);
+                renderPagination();
+            }).fail(function (jqXHR) {
+                toastr.error("加载数据失败");
+            });
+        }
+
+        function renderTable(results) {
+            currentRows = {};
+            const tbody = $('#ukey-tbody');
+            tbody.empty();
+            if (results.length === 0) {
+                const td = $('<td colspan="5">').append(
+                    $('<i class="fa fa-inbox">'),
+                    document.createTextNode('暂无数据')
+                );
+                tbody.append($('<tr class="empty-row">').append(td));
+                return;
+            }
+            results.forEach(function (item) {
+                currentRows[item.id] = item;
+                // 用 jQuery 构建 DOM 并通过 .text() 写入，避免任何字符串拼接导致的 XSS / 属性破坏
+                const tr = $('<tr>');
+                tr.append($('<td class="ukey-username">').text(item.username || ''));
+                tr.append($('<td>').text(item.user_display || ''));
+                tr.append($('<td class="ukey-serial">').text(item.u_key_serial || ''));
+                tr.append($('<td>').text(item.date_created || ''));
+
+                const editBtn = $('<button class="btn btn-xs btn-default">')
+                    .html('<i class="fa fa-pencil"></i> 编辑');
+                editBtn.on('click', function () {
+                    openEditModal(currentRows[item.id]);
+                });
+                const delBtn = $('<button class="btn btn-xs btn-danger">')
+                    .html('<i class="fa fa-trash"></i> 删除');
+                delBtn.on('click', function () {
+                    deleteUKey(item.id);
+                });
+                const actionTd = $('<td class="ukey-actions">').append(editBtn).append(delBtn);
+                tr.append(actionTd);
+                tbody.append(tr);
+            });
+        }
+
+        function renderPagination() {
+            $('#total-count').text("共 " + totalCount + " 条");
+            $('#prev-btn').prop('disabled', offset <= 0);
+            $('#next-btn').prop('disabled', offset + pageSize >= totalCount);
+        }
+
+        function doSearch() {
+            keyword = $('#search-input').val().trim();
+            offset = 0;
+            loadData();
+        }
+
+        function goPrev() {
+            if (offset <= 0) return;
+            offset = Math.max(0, offset - pageSize);
+            loadData();
+        }
+
+        function goNext() {
+            if (offset + pageSize >= totalCount) return;
+            offset += pageSize;
+            loadData();
+        }
+
+        function openCreateModal() {
+            $('#modal-title').text("新增绑定");
+            $('#f-id').val('');
+            $('#f-user').val('');
+            $('#f-user-search').val('').prop('readonly', false);
+            hideSuggestions();
+            $('#f-serial').val('');
+            $('#f-pubkey').val('').attr('placeholder', '读取 USBKey 后自动填充');
+            openModal();
+            setTimeout(function () { $('#f-user-search').focus(); }, 0);
+        }
+
+        function openEditModal(item) {
+            $('#modal-title').text("编辑绑定");
+            $('#f-id').val(item.id);
+            $('#f-user').val(item.user);
+            // 编辑时用户不可更改，展示用户名并禁用搜索
+            $('#f-user-search').val(item.username || item.user).prop('readonly', true);
+            hideSuggestions();
+            $('#f-serial').val(item.u_key_serial);
+            $('#f-pubkey').val('').attr('placeholder', '留空则保持原公钥不变');
+            openModal();
+        }
+
+        function saveUKey() {
+            const id = $('#f-id').val();
+            const data = {
+                user: $('#f-user').val().trim(),
+                u_key_serial: $('#f-serial').val().trim()
+            };
+            const pubkey = $('#f-pubkey').val().trim();
+            if (pubkey) {
+                data.u_key_public_key = pubkey;
+            }
+
+            if (!data.user || !data.u_key_serial) {
+                toastr.error("请选择用户并读取 USBKey 信息");
+                return;
+            }
+            if (!id && $('#f-user-search').val().trim() && !data.user) {
+                toastr.error("请从下拉列表中选择一个用户");
+                return;
+            }
+            if (!id && !pubkey) {
+                toastr.error("请先读取 USBKey 公钥");
+                return;
+            }
+
+            requestApi({
+                url: id ? apiUrl + id + '/' : apiUrl,
+                method: id ? 'PATCH' : 'POST',
+                body: JSON.stringify(data),
+                flash_message: false,
+                success: function () {
+                    toastr.success("保存成功");
+                    closeModal();
+                    loadData();
+                },
+                error: function (responseText, responseJson) {
+                    let msg = "保存失败";
+                    if (responseJson) {
+                        msg = JSON.stringify(responseJson);
+                    }
+                    toastr.error(msg);
+                }
+            });
+        }
+
+        function deleteUKey(id) {
+            if (!confirm("确定要删除该 USBKey 绑定吗？")) {
+                return;
+            }
+            requestApi({
+                url: apiUrl + id + '/',
+                method: 'DELETE',
+                flash_message: false,
+                success: function () {
+                    toastr.success("删除成功");
+                    // 删除当前页最后一条时回退一页
+                    if (offset > 0 && totalCount - 1 <= offset) {
+                        offset = Math.max(0, offset - pageSize);
+                    }
+                    loadData();
+                },
+                error: function () {
+                    toastr.error("删除失败");
+                }
+            });
+        }
+
+        $(document).ready(function () {
+            $('#search-input').keypress(function (e) {
+                if (e.which === 13) {
+                    doSearch();
+                }
+            });
+            initUserAutocomplete();
+            loadData();
+        });
+
+        // ----- 用户名自动补全 -----
+        const suggestUrl = '/api/v1/users/users/suggestions/';
+        let suggestTimer = null;
+        let suggestXhr = null;
+
+        function hideSuggestions() {
+            $('#f-user-suggestions').hide().empty();
+        }
+
+        function renderSuggestions(users) {
+            const ul = $('#f-user-suggestions');
+            ul.empty();
+            if (!users.length) {
+                ul.append($('<li class="suggestion-empty">').text("没有匹配的用户"));
+                ul.show();
+                return;
+            }
+            users.forEach(function (u) {
+                const li = $('<li>').attr('data-id', u.id);
+                li.append($('<span class="suggestion-username">').text(u.username));
+                if (u.name) {
+                    li.append($('<span class="suggestion-name">').text('(' + u.name + ')'));
+                }
+                li.on('mousedown', function (e) {
+                    // 用 mousedown 抢在 input blur 之前触发
+                    e.preventDefault();
+                    selectUser(u);
+                });
+                ul.append(li);
+            });
+            ul.show();
+        }
+
+        function selectUser(u) {
+            $('#f-user').val(u.id);
+            $('#f-user-search').val(u.username);
+            hideSuggestions();
+        }
+
+        function fetchSuggestions(term) {
+            if (suggestXhr) {
+                suggestXhr.abort();
+            }
+            suggestXhr = $.ajax({
+                url: suggestUrl + '?search=' + encodeURIComponent(term),
+                method: 'GET',
+                dataType: 'json'
+            }).done(function (data) {
+                const results = data.results || data || [];
+                renderSuggestions(results);
+            }).fail(function (jqXHR, textStatus) {
+                if (textStatus !== 'abort') {
+                    hideSuggestions();
+                }
+            });
+        }
+
+        function initUserAutocomplete() {
+            const input = $('#f-user-search');
+
+            input.on('input', function () {
+                // 输入变更即清空已选用户 ID，强制重新选择
+                $('#f-user').val('');
+                const term = $(this).val().trim();
+                clearTimeout(suggestTimer);
+                if (term.length < 1) {
+                    hideSuggestions();
+                    return;
+                }
+                suggestTimer = setTimeout(function () {
+                    fetchSuggestions(term);
+                }, 250);
+            });
+
+            input.on('keydown', function (e) {
+                const ul = $('#f-user-suggestions');
+                if (!ul.is(':visible')) return;
+                const items = ul.find('li:not(.suggestion-empty)');
+                if (!items.length) return;
+                let idx = items.index(ul.find('li.active'));
+                if (e.which === 40) { // 下
+                    e.preventDefault();
+                    idx = (idx + 1) % items.length;
+                    items.removeClass('active').eq(idx).addClass('active');
+                } else if (e.which === 38) { // 上
+                    e.preventDefault();
+                    idx = (idx - 1 + items.length) % items.length;
+                    items.removeClass('active').eq(idx).addClass('active');
+                } else if (e.which === 13) { // 回车
+                    e.preventDefault();
+                    const active = idx >= 0 ? items.eq(idx) : items.eq(0);
+                    active.trigger('mousedown');
+                } else if (e.which === 27) { // Esc
+                    hideSuggestions();
+                }
+            });
+
+            input.on('blur', function () {
+                // 延迟隐藏，留出点击选项的时间
+                setTimeout(hideSuggestions, 150);
+            });
+        }
+    </script>
+{% endblock %}

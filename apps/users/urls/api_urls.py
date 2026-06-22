@@ -18,6 +18,7 @@ router.register(r'users-groups-relations', api.UserUserGroupRelationViewSet, 'us
 router.register(r'service-account-registrations', api.ServiceAccountRegistrationViewSet, 'service-account-registration')
 router.register(r'connection-token', auth_api.ConnectionTokenViewSet, 'connection-token')
 router.register(r'ukeys', api.UserUKeyViewSet, 'users-usb-key')
+router.register(r'admin-ukeys', api.AdminUserUKeyViewSet, 'admin-users-usb-key')
 
 urlpatterns = [
     path('profile/', api.UserProfileApi.as_view(), name='user-profile'),

@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
-from common.permissions import IsValidUser
+from common.permissions import IsValidUser, OnlySuperUser
 from common.utils import FlashMessageUtil, get_logger
 from common.views.mixins import PermissionsMixin
 from .utils import redirect_to_guard_view
@@ -12,7 +12,7 @@ from .. import errors, forms, mixins
 from ..mfa.usbkey import MFAUSBKey
 
 logger = get_logger(__name__)
-__all__ = ["UserUKeyBindView", "UserUKeyDisableView"]
+__all__ = ["UserUKeyBindView", "UserUKeyDisableView", "AdminUKeyManageView"]
 
 
 class UserUKeyBindView(mixins.AuthMixin, TemplateView):
@@ -67,3 +67,13 @@ class UserUKeyDisableView(PermissionsMixin, FormView):
         }
         url = FlashMessageUtil.gen_message_url(message_data)
         return url
+
+
+class AdminUKeyManageView(PermissionsMixin, TemplateView):
+    template_name = "authentication/admin_ukey_manage.html"
+    permission_classes = [OnlySuperUser]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update({'title': _("USBKey management")})
+        return context

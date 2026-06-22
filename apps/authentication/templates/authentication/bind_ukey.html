@@ -126,29 +126,16 @@
                 'u_key_public_key': $('#public_key').val()
             }
 
-            let method
-            if (bound_id == null) {
-                method = 'POST'
-                requestApi({
-                    url: url,
-                    method: method,
-                    body: JSON.stringify(data),
-                    flash_message: false,
-                    success: onSuccess,
-                    error: onError
-                })
-            } else {
-                delete data.user
-                method = 'PATCH'
-                requestApi({
-                    url: url + bound_id + '/',
-                    method: method,
-                    body: JSON.stringify(data),
-                    flash_message: false,
-                    success: onSuccess,
-                    error: onError
-                })
-            }
+            // 每次都新建一条记录，允许同一用户绑定多个 USB Key
+            // serial 全局唯一，重复绑定同一把 key 会被后端拒绝
+            requestApi({
+                url: url,
+                method: 'POST',
+                body: JSON.stringify(data),
+                flash_message: false,
+                success: onSuccess,
+                error: onError
+            })
         }
 
         function do_unbind() {

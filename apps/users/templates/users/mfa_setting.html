@@ -164,6 +164,14 @@
                     <div class="action-buttons">
                         <span class="divider">|</span>
                         {% if b.is_active %}
+                            {% if b.name == 'usbkey' %}
+                                <button class="btn btn-primary btn-xs"
+                                        onclick="goTo('{{ b.get_enable_url }}')"
+                                >
+                                    {% trans 'Enable' %}
+                                </button>
+                                <span class="divider">|</span>
+                            {% endif %}
                             <button class="btn btn-warning btn-xs"
                                     {% if not b.can_disable %} disabled {% endif %}
                                     onclick="goTo('{{ b.get_disable_url }}')"

@@ -6,8 +6,12 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from common.api import JMSModelViewSet
+from common.permissions import OnlySuperUser
 from ..models import UKey, User
-from ..serializers import UKeySerializer
+from ..serializers import AdminUKeySerializer, UKeySerializer
+
+__all__ = ['UserUKeyViewSet', 'AdminUserUKeyViewSet']
 
 
 class UserUKeyViewSet(viewsets.ModelViewSet):
@@ -57,3 +61,17 @@ class UserUKeyViewSet(viewsets.ModelViewSet):
     def get_ukey_random(self, *args, **kwargs):
         random_bytes = secrets.token_bytes(32)
         return Response({"msg": base64.b16encode(random_bytes)}, status=200)
+
+
+class AdminUserUKeyViewSet(JMSModelViewSet):
+    """管理员管理所有用户的 USBKey 绑定信息"""
+    serializer_class = AdminUKeySerializer
+    permission_classes = (OnlySuperUser,)
+    search_fields = ("user__username", "user__name", "u_key_serial")
+    filterset_fields = ("user", "u_key_serial")
+    ordering_fields = ("u_key_serial", "date_created", "date_updated")
+    ordering = ("-date_created",)
+
+    def get_queryset(self):
+        return UKey.objects.all().select_related("user")
+
