@@ -12118,8 +12118,8 @@ msgid "USBKey challenge expired"
 msgstr "USBキーのチャレンジの有効期限が切れました"
 
 #: authentication/mfa/usbkey.py:17
-msgid "USBKey unset"
-msgstr "USBキーが設定されていません"
+msgid "The USBKey is not bound to the current account"
+msgstr "このUSBキーは現在のアカウントにバインドされていません"
 
 #: authentication/mfa/usbkey.py:23
 msgid "USBKey signature payload"

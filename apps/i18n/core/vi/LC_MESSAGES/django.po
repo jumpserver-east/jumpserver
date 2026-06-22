@@ -12307,8 +12307,8 @@ msgid "USBKey challenge expired"
 msgstr "Thử thách USB Key đã hết hạn"
 
 #: authentication/mfa/usbkey.py:17
-msgid "USBKey unset"
-msgstr "Chưa thiết lập USB Key"
+msgid "The USBKey is not bound to the current account"
+msgstr "USB Key không được liên kết với tài khoản hiện tại"
 
 #: authentication/mfa/usbkey.py:23
 msgid "USBKey signature payload"

@@ -15,7 +15,7 @@ from ..const import MFAType
 
 usbkey_failed_msg = _('USBKey verification failed')
 usbkey_challenge_expired_msg = _('USBKey challenge expired')
-usbkey_unset_msg = _('USBKey unset')
+usbkey_unset_msg = _('The USBKey is not bound to the current account')
 
 
 class MFAUSBKey(BaseMFA):

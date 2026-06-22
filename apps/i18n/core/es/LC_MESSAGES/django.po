@@ -12563,8 +12563,8 @@ msgid "USBKey challenge expired"
 msgstr "El desafío de USB Key expiró"
 
 #: authentication/mfa/usbkey.py:17
-msgid "USBKey unset"
-msgstr "USB Key no configurada"
+msgid "The USBKey is not bound to the current account"
+msgstr "La USB Key no está vinculada a la cuenta actual"
 
 #: authentication/mfa/usbkey.py:23
 msgid "USBKey signature payload"

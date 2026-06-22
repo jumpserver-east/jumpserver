@@ -12286,8 +12286,8 @@ msgid "USBKey challenge expired"
 msgstr "Запрос USB-ключа истек"
 
 #: authentication/mfa/usbkey.py:17
-msgid "USBKey unset"
-msgstr "USB-ключ не настроен"
+msgid "The USBKey is not bound to the current account"
+msgstr "USB-ключ не привязан к текущей учётной записи"
 
 #: authentication/mfa/usbkey.py:23
 msgid "USBKey signature payload"

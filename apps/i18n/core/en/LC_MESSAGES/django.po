@@ -11564,7 +11564,7 @@ msgid "USBKey challenge expired"
 msgstr ""
 
 #: authentication/mfa/usbkey.py:17
-msgid "USBKey unset"
+msgid "The USBKey is not bound to the current account"
 msgstr ""
 
 #: authentication/mfa/usbkey.py:23
