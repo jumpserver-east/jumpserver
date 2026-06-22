@@ -53,18 +53,15 @@ class MFAUSBKey(BaseMFA):
         if not challenge:
             return False, usbkey_challenge_expired_msg
 
-        user_keys = self.user.user_usb_key.all()
-        if not user_keys:
+        serial = payload.get('serial')
+        user_key = self.user.user_usb_key.filter(u_key_serial=serial).first()
+        if not user_key:
             return False, usbkey_unset_msg
 
-        # 只要持有的私钥能匹配该用户名下任意一个已绑定公钥即放行,
-        # serial 仅作参考,不参与校验,因此同一套密钥对的多个物理 key 都能通过。
-        signature = payload.get('signature')
-        challenge_bytes = challenge.encode('utf-8')
-        for user_key in user_keys:
-            if verify_usbkey_sm2_data(user_key.u_key_public_key, challenge_bytes, signature):
-                cache.delete(self._cache_key())
-                return True, ''
+        ok = verify_usbkey_sm2_data(user_key.u_key_public_key, challenge.encode('utf-8'), payload.get('signature'))
+        if ok:
+            cache.delete(self._cache_key())
+            return True, ''
         return False, usbkey_failed_msg
 
     @staticmethod
