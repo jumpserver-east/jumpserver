@@ -11647,7 +11647,7 @@ msgid "Key PIN code"
 msgstr ""
 
 #: templates/_mfa_login_field.html:152
-msgid "Failed to verify user password, error code: "
+msgid "PIN verification failed, error code: "
 msgstr ""
 
 #: templates/_mfa_login_field.html:159

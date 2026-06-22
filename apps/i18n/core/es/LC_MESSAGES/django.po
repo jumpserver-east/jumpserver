@@ -12646,8 +12646,8 @@ msgid "Key PIN code"
 msgstr "Código PIN de Key"
 
 #: templates/_mfa_login_field.html:152
-msgid "Failed to verify user password, error code: "
-msgstr "Error al verificar la contraseña de usuario, código de error: "
+msgid "PIN verification failed, error code: "
+msgstr "Error al verificar el PIN, código de error: "
 
 #: templates/_mfa_login_field.html:159
 msgid "Failed to get challenge"

@@ -12201,8 +12201,8 @@ msgid "Key PIN code"
 msgstr "Key PINコード"
 
 #: templates/_mfa_login_field.html:152
-msgid "Failed to verify user password, error code: "
-msgstr "ユーザーパスワードの検証に失敗しました。エラーコード："
+msgid "PIN verification failed, error code: "
+msgstr "PIN 認証に失敗しました。エラーコード："
 
 #: templates/_mfa_login_field.html:159
 msgid "Failed to get challenge"

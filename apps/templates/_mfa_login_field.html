@@ -161,7 +161,7 @@
         const pin = $('#usbkey-pin').val()
         let ret = usbkeyToken.SOF_Login(pin)
         if (ret !== 0) {
-            toastr.error("{% trans 'Failed to verify user password, error code: ' %}" + usbkeyToken.SOF_GetLastError())
+            toastr.error("{% trans 'PIN verification failed, error code: ' %}" + usbkeyToken.SOF_GetLastError())
             return
         }
 

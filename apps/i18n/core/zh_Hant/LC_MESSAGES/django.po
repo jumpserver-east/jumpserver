@@ -11911,8 +11911,8 @@ msgid "Key PIN code"
 msgstr "Key PIN 碼"
 
 #: templates/_mfa_login_field.html:152
-msgid "Failed to verify user password, error code: "
-msgstr "驗證使用者密碼失敗，錯誤碼："
+msgid "PIN verification failed, error code: "
+msgstr "PIN 認證失敗，錯誤碼："
 
 #: templates/_mfa_login_field.html:159
 msgid "Failed to get challenge"
