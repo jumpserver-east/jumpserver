@@ -7,7 +7,7 @@
 >
     {% for backend in mfa_backends %}
     <option value="{{ backend.name }}"
-            {% if not backend.is_active %} disabled {% endif %}
+            {% if not backend.is_active %} data-inactive="1" data-enable-url="{{ backend.get_enable_url }}" {% endif %}
     >
         {{ backend.display_name }}
     </option>
@@ -19,7 +19,8 @@
             {% if backend.challenge_required %}challenge-required{% endif %}"
          style="display: none"
     >
-        {% if backend.name == 'usbkey' %}
+        {% if not backend.is_active %}
+        {% elif backend.name == 'usbkey' %}
         <input type="password" id="usbkey-pin" class="form-control input-style usbkey-pin"
                placeholder="{% trans 'Key PIN code' %}">
         <input type="hidden" id="usbkey-code" class="input-style usbkey-code">
@@ -64,6 +65,7 @@
         height: 100%;
         vertical-align: top;
     }
+
 </style>
 <script>
     const preferMFAKey = 'mfaPrefer'
@@ -74,9 +76,9 @@
         const mfaSelectRef = document.getElementById('mfa-select');
         const preferMFA = localStorage.getItem(preferMFAKey);
         const valueSelector = "value=" + preferMFA
-        const preferMFADisabled = $(`#mfa-select option[${valueSelector}]`).attr('disabled')
+        const preferMFAInactive = $(`#mfa-select option[${valueSelector}]`).attr('data-inactive')
 
-        if (preferMFA && !preferMFADisabled) {
+        if (preferMFA && !preferMFAInactive) {
             mfaSelectRef.value = preferMFA;
         }
 
@@ -89,11 +91,21 @@
     function selectChange(name, onLoad) {
         $('.mfa-field').hide()
         $('#mfa-' + name).show()
+
+        const selectedOption = $('#mfa-select option[value=' + name + ']')
+        const isInactive = !!selectedOption.attr('data-inactive')
+
+        // 未绑定的 MFA 方式无法验证，用户选中后直接跳转到绑定页面
+        if (isInactive) {
+            if (!onLoad) {
+                window.location.href = selectedOption.attr('data-enable-url')
+            }
+            return
+        }
+
         if (!onLoad) {
             localStorage.setItem(preferMFAKey, name)
         }
-
-
 
         const currentMFAInputRef = $('#mfa-' + name + ' .input-style').last()
         currentMFAInputRef.attr('name', 'code')
