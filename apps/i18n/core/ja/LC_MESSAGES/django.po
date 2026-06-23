@@ -12109,6 +12109,10 @@ msgstr "ライセンスが無効です"
 msgid "USBKey"
 msgstr "USBキー"
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr "USBキー管理"
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr "USBキーの検証に失敗しました"

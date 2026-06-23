@@ -12119,6 +12119,10 @@ msgstr "라이센스가 유효하지 않습니다."
 msgid "USBKey"
 msgstr "USB 키"
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr "USB 키 관리"
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr "USB 키 검증에 실패했습니다"

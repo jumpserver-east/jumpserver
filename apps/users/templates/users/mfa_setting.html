@@ -114,6 +114,12 @@
     <div class="container">
         <div class="header">
             <h2>MFA</h2>
+            {% if user.is_superuser %}
+                <button class="btn btn-primary btn-sm"
+                        onclick="goTo('{% url 'authentication:ukey-manage' %}')">
+                    {% trans 'USBKey management' %}
+                </button>
+            {% endif %}
         </div>
         <hr>
         <div class="row" style="padding-top: 10px">

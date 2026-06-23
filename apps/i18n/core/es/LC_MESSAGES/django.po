@@ -12554,6 +12554,10 @@ msgstr "Licencia no válida"
 msgid "USBKey"
 msgstr "USB Key"
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr "Gestión de USB Key"
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr "Falló la verificación de USB Key"

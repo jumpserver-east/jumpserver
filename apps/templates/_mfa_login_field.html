@@ -82,6 +82,15 @@
             mfaSelectRef.value = preferMFA;
         }
 
+        // 默认选中项若未启用（如未绑定的 OTP），自动切到第一个已启用的方式，
+        // 避免用户直接点下一步提交了一个未启用的 MFA 类型
+        if ($('#mfa-select option:selected').attr('data-inactive')) {
+            const firstActive = $('#mfa-select option:not([data-inactive])').first()
+            if (firstActive.length) {
+                mfaSelectRef.value = firstActive.val()
+            }
+        }
+
         const mfaSelect = mfaSelectRef.value;
         if (mfaSelect !== null) {
             selectChange(mfaSelect, true);

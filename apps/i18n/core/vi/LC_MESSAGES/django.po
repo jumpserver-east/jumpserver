@@ -12298,6 +12298,10 @@ msgstr "Giấy phép không hợp lệ"
 msgid "USBKey"
 msgstr "USB Key"
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr "Quản lý USB Key"
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr "Xác minh USB Key thất bại"

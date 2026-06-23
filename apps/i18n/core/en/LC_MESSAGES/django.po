@@ -11555,6 +11555,10 @@ msgstr ""
 msgid "USBKey"
 msgstr ""
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr ""
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr ""

@@ -11819,6 +11819,10 @@ msgstr "許可證無效"
 msgid "USBKey"
 msgstr "USBKey"
 
+#: authentication/views/ukey.py:78
+msgid "USBKey management"
+msgstr "USBKey 管理"
+
 #: authentication/mfa/usbkey.py:15
 msgid "USBKey verification failed"
 msgstr "USBKey 驗證失敗"
