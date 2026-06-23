@@ -19,6 +19,7 @@ urlpatterns = [
     path('logout/', views.UserLogoutView.as_view(), name='logout'),
     path('ukey/<uuid:user_id>/bind/', views.UserUKeyBindView.as_view(), name='ukey-bind'),
     path('ukey/manage/', views.AdminUKeyManageView.as_view(), name='ukey-manage'),
+    path('profile/ukey/manage/', views.UserUKeyManageView.as_view(), name='user-ukey-manage'),
 
     # 原来在users中的
     path('password/forget/previewing/', users_view.UserForgotPasswordPreviewingView.as_view(),

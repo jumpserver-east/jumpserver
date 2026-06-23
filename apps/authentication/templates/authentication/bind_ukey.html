@@ -39,9 +39,6 @@
         <button class="btn btn-primary full-width m-b" type='button' onclick="export_public_key()">
             {% trans 'Click to get USB Key information' %}
         </button>
-        <button id='delete_button' class="btn btn-primary full-width m-b" disabled type='button' onclick="do_unbind()">
-            {% trans 'Remove USB Key binding' %}
-        </button>
         <button id='submit_button' type="button" disabled class="btn btn-primary block full-width m-b"
                 onclick="do_bind()">
             {% trans 'Next' %}
@@ -104,21 +101,6 @@
             })
         }
 
-        function has_bound() {
-            let bound = null
-            $.ajax({
-                url: url + '?user=' + $('#user_id').val(),
-                dataType: 'json',
-                async: false,
-                success: function (result) {
-                    if (result.length >= 1) {
-                        bound = result[0]['id']
-                    }
-                }
-            })
-            return bound
-        }
-
         function do_bind() {
             let data = {
                 'user': $('#user_id').val(),
@@ -136,26 +118,6 @@
                 success: onSuccess,
                 error: onError
             })
-        }
-
-        function do_unbind() {
-            requestApi({
-                url: url + bound_id + '/',
-                method: 'DELETE',
-                flash_message: false,
-                success: function () {
-                    setTimeout(function () {
-                        toastr.success("{% trans "Delete success" %}");
-                    })
-                },
-                error: onError
-            })
-        }
-
-        const bound_id = has_bound()
-        if (bound_id != null) {
-            let delete_button = document.getElementById('delete_button')
-            delete_button.disabled = false
         }
 
     </script>

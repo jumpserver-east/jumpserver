@@ -12,7 +12,7 @@ from .. import errors, forms, mixins
 from ..mfa.usbkey import MFAUSBKey
 
 logger = get_logger(__name__)
-__all__ = ["UserUKeyBindView", "UserUKeyDisableView", "AdminUKeyManageView"]
+__all__ = ["UserUKeyBindView", "UserUKeyDisableView", "AdminUKeyManageView", "UserUKeyManageView"]
 
 
 class UserUKeyBindView(mixins.AuthMixin, TemplateView):
@@ -76,4 +76,17 @@ class AdminUKeyManageView(PermissionsMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update({'title': _("USBKey management")})
+        return context
+
+
+class UserUKeyManageView(PermissionsMixin, TemplateView):
+    template_name = "authentication/personal_ukey_manage.html"
+    permission_classes = [IsValidUser]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update({
+            'title': _("USB Key Bind"),
+            'user_id': str(self.request.user.id),
+        })
         return context

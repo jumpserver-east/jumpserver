@@ -1,0 +1,221 @@
+{% extends '_base_only_content.html' %}
+{% load static %}
+{% load i18n %}
+{% block custom_head_css_js %}
+    <style>
+        .margin-bottom {
+            margin-bottom: 15px;
+        }
+
+        .input-style {
+            width: 100%;
+            display: inline-block;
+        }
+
+        #ukey-table {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        #ukey-table thead th {
+            background: #f7f9fa;
+            border-bottom: 1px solid #eef0f2;
+            color: #5e6e77;
+            font-weight: 600;
+            font-size: 13px;
+            padding: 10px 12px;
+        }
+
+        #ukey-table tbody td {
+            padding: 10px 12px;
+            word-break: break-all;
+            vertical-align: middle;
+            border-top: 1px solid #f1f3f4;
+            font-size: 13px;
+        }
+
+        .ukey-serial {
+            font-family: Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #4a5a63;
+        }
+
+        .empty-row td {
+            text-align: center;
+            color: #b3bcc4;
+            padding: 24px 0;
+        }
+    </style>
+{% endblock %}
+
+{% block title %}
+    {% trans 'USB Key Bind' %}
+{% endblock %}
+
+{% block content %}
+    <script src="{% static 'js/mToken.js' %}"></script>
+
+    <table id="ukey-table" class="table">
+        <thead>
+        <tr>
+            <th style="width: 55%">{% trans 'USB Key Serial' %}</th>
+            <th style="width: 30%">{% trans 'Date created' %}</th>
+            <th style="width: 15%">{% trans 'Action' %}</th>
+        </tr>
+        </thead>
+        <tbody id="ukey-tbody"></tbody>
+    </table>
+
+    <form class="m-t" role="form">
+        <input id="user_id" type="text" style="display: none" value="{{ user_id }}">
+        <div class="form-group">
+            <div class="margin-bottom">
+                <input id="serial" type="text" readonly class="form-control input-style"
+                       placeholder="{% trans 'USB Key Serial' %}">
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="margin-bottom">
+                <input id="public_key" type="text" readonly class="form-control input-style"
+                       placeholder="{% trans 'USB Key Public Key' %}">
+            </div>
+        </div>
+        <button class="btn btn-primary full-width m-b" type="button" onclick="export_public_key()">
+            {% trans 'Click to get USB Key information' %}
+        </button>
+        <button id="submit_button" type="button" disabled class="btn btn-primary block full-width m-b"
+                onclick="do_bind()">
+            {% trans 'Next' %}
+        </button>
+    </form>
+
+    <script>
+        const token = new mToken("mTokenPlugin")
+        const url = '/api/v1/users/ukeys/'
+
+        function enumDevice() {
+            let ret = token.SOF_LoadLibrary(token.GM3000)
+            if (ret !== 0) {
+                alert("{% trans 'Failed to load plugin, error code: ' %}" + token.SOF_GetLastError())
+                return
+            }
+            const deviceName = token.SOF_EnumDevice();
+            if (deviceName != null) {
+                ret = token.SOF_GetDeviceInstance(deviceName[0], "");
+                if (ret !== 0) {
+                    alert("{% trans 'Failed to bind application, please check if the Key is initialized, error code: ' %}" + token.SOF_GetLastError())
+                }
+            } else {
+                alert("{% trans 'No USB Key found' %}")
+            }
+            return deviceName
+        }
+
+        function export_public_key() {
+            const device = enumDevice()
+            if (device == null) {
+                return
+            }
+            let container = token.SOF_EnumCertContiner().split("||")
+            if (container.length === 0) {
+                alert("{% trans 'No container found, error code: ' %}" + token.SOF_GetLastError())
+                return;
+            }
+            let strPubKey = token.SOF_ExportPubKey(container[0], 1, 3);
+            if (strPubKey == null) {
+                alert("{% trans 'Failed to export public key, error code: ' %}" + token.SOF_GetLastError())
+                return
+            }
+            $('#serial').val(device[0])
+            $('#public_key').val(strPubKey)
+            document.getElementById('submit_button').disabled = false
+        }
+
+        function onError(responseText) {
+            setTimeout(function () {
+                toastr.error(responseText);
+            })
+        }
+
+        function loadData() {
+            $.ajax({
+                url: url + '?user=' + $('#user_id').val(),
+                method: 'GET',
+                dataType: 'json'
+            }).done(function (data) {
+                const results = data.results || data || [];
+                renderTable(results);
+            }).fail(function () {
+                toastr.error("{% trans 'Failed to load data' %}");
+            });
+        }
+
+        function renderTable(results) {
+            const tbody = $('#ukey-tbody');
+            tbody.empty();
+            if (!results.length) {
+                const td = $('<td colspan="3">').text("{% trans 'No data' %}");
+                tbody.append($('<tr class="empty-row">').append(td));
+                return;
+            }
+            results.forEach(function (item) {
+                const tr = $('<tr>');
+                tr.append($('<td class="ukey-serial">').text(item.u_key_serial || ''));
+                tr.append($('<td>').text(item.date_created || ''));
+                const delBtn = $('<button class="btn btn-xs btn-danger" type="button">')
+                    .text("{% trans 'Delete' %}");
+                delBtn.on('click', function () {
+                    do_unbind(item.id);
+                });
+                tr.append($('<td>').append(delBtn));
+                tbody.append(tr);
+            });
+        }
+
+        function do_bind() {
+            const data = {
+                'user': $('#user_id').val(),
+                'u_key_serial': $('#serial').val(),
+                'u_key_public_key': $('#public_key').val()
+            }
+            requestApi({
+                url: url,
+                method: 'POST',
+                body: JSON.stringify(data),
+                flash_message: false,
+                success: function () {
+                    setTimeout(function () {
+                        toastr.success("{% trans 'Bind success' %}");
+                    })
+                    $('#serial').val('')
+                    $('#public_key').val('')
+                    document.getElementById('submit_button').disabled = true
+                    loadData()
+                },
+                error: onError
+            })
+        }
+
+        function do_unbind(id) {
+            if (!confirm("{% trans 'Are you sure you want to delete this USBKey binding?' %}")) {
+                return;
+            }
+            requestApi({
+                url: url + id + '/',
+                method: 'DELETE',
+                flash_message: false,
+                success: function () {
+                    setTimeout(function () {
+                        toastr.success("{% trans 'Delete success' %}");
+                    })
+                    loadData()
+                },
+                error: onError
+            })
+        }
+
+        $(document).ready(function () {
+            loadData();
+        });
+    </script>
+{% endblock %}

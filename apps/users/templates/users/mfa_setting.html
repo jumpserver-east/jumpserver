@@ -166,7 +166,7 @@
                         {% if b.is_active %}
                             {% if b.name == 'usbkey' %}
                                 <button class="btn btn-primary btn-xs"
-                                        onclick="goTo('{{ b.get_enable_url }}')"
+                                        onclick="goTo('{% url 'authentication:user-ukey-manage' %}')"
                                 >
                                     {% trans 'Enable' %}
                                 </button>
