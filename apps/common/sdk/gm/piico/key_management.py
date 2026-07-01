@@ -202,6 +202,22 @@ class PiicoKeyManager:
             category=KeyCategory.LOG_INTEGRITY,
         )
 
+    def register_ukey_signing_key(self, label: str, public_key: bytes) -> KeyMetadata:
+        return self._register_ukey_public_key(
+            label=label,
+            public_key=public_key,
+            category=KeyCategory.IDENTITY_UKEY_SIGNING,
+            usage=("verify", "identity_auth"),
+        )
+
+    def register_ukey_encryption_key(self, label: str, public_key: bytes) -> KeyMetadata:
+        return self._register_ukey_public_key(
+            label=label,
+            public_key=public_key,
+            category=KeyCategory.IDENTITY_UKEY_ENCRYPTION,
+            usage=("encrypt", "key_wrap"),
+        )
+
     def list_keys(self, state: Optional[KeyState] = None) -> list[KeyMetadata]:
         records = self._records.values()
         if state is not None:
@@ -280,11 +296,64 @@ class PiicoKeyManager:
         self._require_active(record)
         return self.device.sm3_hmac(record.secret_key, data)
 
+    def generate_ukey_challenge(self, length: int = 32) -> bytes:
+        if length < 16:
+            raise ValueError("UKey challenge length must be at least 16 bytes")
+        return self.device.generate_random(length)
+
+    def verify_ukey_signature(self, key_id: str, raw_data: bytes, sign_data: bytes) -> bool:
+        record = self._get_record(key_id)
+        self._require_algorithm(record, KeyAlgorithm.SM2)
+        self._require_category(record, KeyCategory.IDENTITY_UKEY_SIGNING)
+        self._require_active(record)
+
+        session = self.device.new_session()
+        try:
+            return session.verify_sign_ecc(
+                SGD_SM2,
+                bytes(record.public_key),
+                raw_data,
+                sign_data,
+            )
+        finally:
+            session.close()
+
     def _get_record(self, key_id: str) -> _KeyRecord:
         record = self._records.get(key_id)
         if record is None:
             raise KeyError(f"Piico key not found: {key_id}")
         return record
+
+    def _register_ukey_public_key(
+            self,
+            label: str,
+            public_key: bytes,
+            category: KeyCategory,
+            usage: Iterable[str],
+    ) -> KeyMetadata:
+        if category not in (KeyCategory.IDENTITY_UKEY_SIGNING, KeyCategory.IDENTITY_UKEY_ENCRYPTION):
+            raise ValueError("UKey key category is required")
+        if not public_key:
+            raise ValueError("UKey public key is required")
+
+        key_id = self._new_key_id()
+        now = self._now()
+        metadata = KeyMetadata(
+            key_id=key_id,
+            label=label,
+            category=category,
+            algorithm=KeyAlgorithm.SM2,
+            state=KeyState.ACTIVE,
+            version=1,
+            created_at=now,
+            updated_at=now,
+            usage=tuple(usage),
+        )
+        self._records[key_id] = _KeyRecord(
+            metadata=metadata,
+            public_key=bytearray(public_key),
+        )
+        return metadata
 
     def _set_state(self, key_id: str, state: KeyState) -> KeyMetadata:
         record = self._get_record(key_id)
@@ -301,6 +370,11 @@ class PiicoKeyManager:
     def _require_algorithm(record: _KeyRecord, algorithm: KeyAlgorithm) -> None:
         if record.metadata.algorithm != algorithm:
             raise ValueError(f"Key algorithm must be {algorithm.value}")
+
+    @staticmethod
+    def _require_category(record: _KeyRecord, category: KeyCategory) -> None:
+        if record.metadata.category != category:
+            raise ValueError(f"Key category must be {category.value}")
 
     @staticmethod
     def _require_active(record: _KeyRecord) -> None:

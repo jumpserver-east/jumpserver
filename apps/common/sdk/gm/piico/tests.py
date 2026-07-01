@@ -15,6 +15,9 @@ class FakeSession:
             private_key=b"s" * 32,
         )
 
+    def verify_sign_ecc(self, alg_id, public_key, raw_data, sign_data):
+        return bool(public_key and raw_data and sign_data)
+
     def close(self):
         self.closed = True
 
@@ -60,6 +63,30 @@ class PiicoKeyManagerZeroizeTest(TestCase):
         result = manager.compute_hmac(metadata.key_id, b"abcdef")
 
         self.assertEqual(result, b"\x11\x11\x11\x11abcd")
+
+    def test_register_ukey_signing_key_and_verify_signature(self):
+        manager = PiicoKeyManager(FakeDevice())
+        metadata = manager.register_ukey_signing_key(
+            "admin-ukey-signing",
+            b"p" * 64,
+        )
+
+        result = manager.verify_ukey_signature(
+            metadata.key_id,
+            b"challenge",
+            b"signature",
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(metadata.category, KeyCategory.IDENTITY_UKEY_SIGNING)
+        self.assertEqual(metadata.algorithm, KeyAlgorithm.SM2)
+
+    def test_ukey_challenge_uses_card_random(self):
+        manager = PiicoKeyManager(FakeDevice([b"\x33" * 32]))
+
+        challenge = manager.generate_ukey_challenge()
+
+        self.assertEqual(challenge, b"\x33" * 32)
 
     def test_zeroize_key_overwrites_sm4_material_and_marks_destroyed(self):
         manager = PiicoKeyManager(FakeDevice())
