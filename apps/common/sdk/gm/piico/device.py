@@ -74,6 +74,11 @@ class Device:
         session = self.new_session()
         return CBCCipher(session, key_val, iv)
 
+    def new_key_manager(self):
+        from .key_management import PiicoKeyManager
+
+        return PiicoKeyManager(self)
+
     def new_digest(self, mode="sm3"):
         session = self.new_session()
         return Digest(session, mode)

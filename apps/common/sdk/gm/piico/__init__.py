@@ -1,6 +1,7 @@
 from django.conf import settings
 
 from .device import Device
+from .key_management import KeyAlgorithm, KeyCategory, KeyMetadata, KeyState, PiicoKeyManager
 from .self_test import (
     DEFAULT_PIICO_SELF_TESTS,
     format_piico_self_test_report_lines,
@@ -15,7 +16,12 @@ __all__ = [
     "DEFAULT_PIICO_SELF_TESTS",
     "Device",
     "format_piico_self_test_report_lines",
+    "KeyAlgorithm",
+    "KeyCategory",
+    "KeyMetadata",
+    "KeyState",
     "open_piico_device",
+    "PiicoKeyManager",
     "run_piico_self_test",
     "summarize_piico_self_test",
 ]
