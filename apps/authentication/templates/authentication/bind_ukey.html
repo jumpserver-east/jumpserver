@@ -24,6 +24,12 @@
     <form class="m-t" role="form" method="post" action="">
         {% csrf_token %}
         <input id="user_id" type="text" style="display: none" value="{{ user_id }}">
+        <div id="device_select_group" class="form-group" style="display: none">
+            <div class="margin-bottom">
+                <select id="device_select" class="form-control input-style"
+                        onchange="read_device(this.value)"></select>
+            </div>
+        </div>
         <div class="form-group {% if form.serial.errors %} has-error {% endif %}">
             <div class="margin-bottom challenge-required">
                 <input id="serial" name="token" type="text" readonly class="form-control input-style"
@@ -52,42 +58,74 @@
         const url = '/api/v1/users/ukeys/'
 
         function enumDevice() {
-            let ret = 0
-            ret = token.SOF_LoadLibrary(token.GM3000)
+            let ret = token.SOF_LoadLibrary(token.GM3000)
             if (ret !== 0) {
                 alert("{% trans 'Failed to load plugin, error code: ' %}" + token.SOF_GetLastError())
-                return
+                return null
             }
-            const deviceName = token.SOF_EnumDevice();
-            if (deviceName != null) {
-                ret = token.SOF_GetDeviceInstance(deviceName[0], "");
-                if (ret !== 0) {
-                    alert("{% trans 'Failed to bind application, please check if the Key is initialized, error code: ' %}" + token.SOF_GetLastError())
-                }
-            } else {
+            let devices = token.SOF_EnumDevice();
+            // Depending on the plugin version SOF_EnumDevice may return an array or a "||" joined string
+            if (typeof devices === 'string') {
+                devices = devices.split("||")
+            }
+            if (devices != null) {
+                devices = devices.filter(function (name) {
+                    return name && name.length > 0
+                })
+            }
+            if (devices == null || devices.length === 0) {
                 alert("{% trans 'No USB Key found' %}")
+                return null
             }
-            return deviceName
+            return devices
         }
 
         function export_public_key() {
-            const device = enumDevice()
-            if (device == null) {
+            const devices = enumDevice()
+            if (devices == null) {
                 return
             }
-            let container = token.SOF_EnumCertContiner().split("||")
-            if (container.length === 0) {
+            const select = document.getElementById('device_select')
+            select.innerHTML = ''
+            devices.forEach(function (name) {
+                const option = document.createElement('option')
+                option.value = name
+                option.text = name
+                select.appendChild(option)
+            })
+            // Only expose the selector when more than one Key is plugged in
+            document.getElementById('device_select_group').style.display = devices.length > 1 ? 'block' : 'none'
+            read_device(select.value)
+        }
+
+        function read_device(deviceName) {
+            const submit_button = document.getElementById('submit_button')
+            $('#serial').val('')
+            $('#public_key').val('')
+            submit_button.disabled = true
+
+            let ret = token.SOF_GetDeviceInstance(deviceName, "");
+            if (ret !== 0) {
+                alert("{% trans 'Failed to bind application, please check if the Key is initialized, error code: ' %}" + token.SOF_GetLastError())
+                return
+            }
+            const containerStr = token.SOF_EnumCertContiner()
+            if (containerStr == null) {
                 alert("{% trans 'No container found, error code: ' %}" + token.SOF_GetLastError())
-                return;
+                return
+            }
+            const container = containerStr.split("||")
+            if (container.length === 0 || container[0] === "") {
+                alert("{% trans 'No container found, error code: ' %}" + token.SOF_GetLastError())
+                return
             }
             let strPubKey = token.SOF_ExportPubKey(container[0], 1, 3);
             if (strPubKey == null) {
                 alert("{% trans 'Failed to export public key, error code: ' %}" + token.SOF_GetLastError())
                 return
             }
-            $('#serial').val(device[0])
+            $('#serial').val(deviceName)
             $('#public_key').val(strPubKey)
-            let submit_button = document.getElementById('submit_button')
             submit_button.disabled = false
         }
 
