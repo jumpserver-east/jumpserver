@@ -77,6 +77,14 @@ class Applet(JMSBaseModel):
             return None
         with open(path, 'r') as f:
             return yaml.safe_load(f)
+        
+    @lazyproperty
+    def platform_manifest(self) -> dict:
+        path = os.path.join(self.path, 'platform.yml')
+        if not os.path.exists(path):
+            return None
+        with open(path, 'r') as f:
+            return yaml.safe_load(f)
 
     @property
     def icon(self) -> str:

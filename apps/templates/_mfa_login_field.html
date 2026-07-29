@@ -2,7 +2,7 @@
 {% load static %}
 <script src="{% static 'js/mToken.js' %}"></script>
 
-<select id="mfa-select" name="mfa_type" class="form-control select-con"
+<select id="mfa-select" name="mfa_type" class="form-control select-con" autocomplete="off"
         onchange="selectChange(this.value)"
 >
     {% for backend in mfa_backends %}
@@ -32,6 +32,7 @@
         {% elif backend.has_code %}
         <input type="text" class="form-control input-style"
                placeholder="{{ backend.placeholder }}"
+               autocomplete="off"
         >
         {% if backend.challenge_required %}
         <button class="btn btn-primary full-width btn-challenge"
@@ -115,6 +116,9 @@
         if (!onLoad) {
             localStorage.setItem(preferMFAKey, name)
         }
+
+        // 清除其他 MFA 字段残留的 name，避免切换类型后重复提交 code
+        $('.input-style').removeAttr('name')
 
         const currentMFAInputRef = $('#mfa-' + name + ' .input-style').last()
         currentMFAInputRef.attr('name', 'code')

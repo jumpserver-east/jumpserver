@@ -1,6 +1,6 @@
 cipher_alg_id = {
-    "sm4_ebc": 0x00000401,
-    "sm4_cbc": 0x00000402,
+    "sm4_ebc": 0x00002001,
+    "sm4_cbc": 0x00002002,
     "sm4_mac": 0x00000405,
 }
 
@@ -28,7 +28,7 @@ class EBCCipher:
 
     def __get_key(self, key_val):
         key_val = self.__padding(key_val)
-        return self._session.import_key(key_val)
+        return key_val
 
     @staticmethod
     def __padding(val):
@@ -48,7 +48,6 @@ class EBCCipher:
         return bytes(plain_text)
 
     def destroy(self):
-        self._session.destroy_cipher_key(self._key)
         self._session.close()
 
 

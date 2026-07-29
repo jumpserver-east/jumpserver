@@ -8,3 +8,4 @@ from .mfa import *
 from .slack import *
 from .ukey import *
 from .wecom import *
+from .agreement import *
