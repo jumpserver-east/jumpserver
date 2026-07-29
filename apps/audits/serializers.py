@@ -81,6 +81,7 @@ class UserLoginLogSerializer(HmacVerifySerializerMixin, serializers.ModelSeriali
     mfa = LabeledChoiceField(choices=MFAChoices.choices, label=_("MFA"))
     type = LabeledChoiceField(choices=LoginTypeChoices.choices, label=_("Type"))
     status = LabeledChoiceField(choices=LoginStatusChoices.choices, label=_("Status"))
+    city = serializers.ReadOnlyField(source='city_display', label=_("Login city"))
 
     @property
     def hmac_model_class(self):
@@ -155,6 +156,10 @@ class OperateLogFullSerializer(OperateLogSerializer):
 
     class Meta(OperateLogSerializer.Meta):
         fields = OperateLogSerializer.Meta.fields + ['diff']
+    
+    @staticmethod
+    def get_diff(instance):
+        return OperateLogStore.convert_diff_friendly(instance)
 
 
 class PasswordChangeLogSerializer(HmacVerifySerializerMixin, serializers.ModelSerializer):
@@ -232,6 +237,7 @@ class UserSessionSerializer(serializers.ModelSerializer):
     user = ObjectRelatedField(required=False, queryset=User.objects, label=_('User'))
     date_expired = serializers.DateTimeField(format="%Y/%m/%d %H:%M:%S", label=_('Date expired'))
     is_current_user_session = serializers.SerializerMethodField()
+    city = serializers.ReadOnlyField(source='city_display', label=_("Login city"))
 
     class Meta:
         model = models.UserSession

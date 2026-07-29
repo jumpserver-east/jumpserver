@@ -4,7 +4,7 @@ from Cryptodome.Util.asn1 import DerSequence
 
 from .const import ECC_KEY_BITS_256
 from .ecc import ECCrefPublicKey, ECCrefPrivateKey, ECCKeyPair, ECCSignature
-from .exception import PiicoError
+from .exception import GMDeviceError
 from .session_mixin import SM3Mixin, SM4Mixin, SM2Mixin
 
 
@@ -21,7 +21,7 @@ class Session(SM2Mixin, SM3Mixin, SM4Mixin):
         random_data = (c_ubyte * length)()
         ret = self._driver.SDF_GenerateRandom(self._session, c_int(length), random_data)
         if ret != 0:
-            raise PiicoError("generate random error", ret)
+            raise GMDeviceError("generate random error", ret)
         return bytes(random_data)
 
     def generate_ecc_key_pair(self, alg_id):
@@ -35,7 +35,7 @@ class Session(SM2Mixin, SM3Mixin, SM4Mixin):
             pointer(private_key),
         )
         if ret != 0:
-            raise PiicoError("generate ecc key pair failed", ret)
+            raise GMDeviceError("generate ecc key pair failed", ret)
         return ECCKeyPair(public_key.encode(), private_key.encode())
 
     def verify_sign_ecc(self, alg_id, public_key, raw_data, sign_data):
@@ -50,7 +50,7 @@ class Session(SM2Mixin, SM3Mixin, SM4Mixin):
         seq_der = DerSequence()
         decoded_sign = seq_der.decode(sign_data)
         if decoded_sign and len(decoded_sign) != 2:
-            raise PiicoError("verify_sign decoded_sign", -1)
+            raise GMDeviceError("verify_sign decoded_sign", -1)
         r = bytes([0] * 32) + int(decoded_sign[0]).to_bytes(32, byteorder="big")
         s = bytes([0] * 32) + int(decoded_sign[1]).to_bytes(32, byteorder="big")
         signature = ECCSignature((c_ubyte * len(r))(*r), (c_ubyte * len(s))(*s))
@@ -65,10 +65,10 @@ class Session(SM2Mixin, SM3Mixin, SM4Mixin):
             pointer(signature),
         )
         if ret != 0:
-            raise PiicoError("verify_sign", ret)
+            raise GMDeviceError("verify_sign", ret)
         return True
 
     def close(self):
         ret = self._driver.SDF_CloseSession(self._session)
         if ret != 0:
-            raise PiicoError("close session failed", ret)
+            raise GMDeviceError("close session failed", ret)

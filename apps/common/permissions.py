@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+import hmac
 import time
 
 from django.conf import settings
@@ -19,6 +20,13 @@ class OnlySuperUser(IsValidUser):
     def has_permission(self, request, view):
         return super().has_permission(request, view) \
             and request.user.is_superuser
+
+
+class OnlyAdminSuperUser(IsValidUser):
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) \
+            and request.user.is_superuser \
+            and request.user.username == 'admin'
 
 
 class IsServiceAccount(IsValidUser):
@@ -48,7 +56,10 @@ class WithBootstrapToken(permissions.BasePermission):
             return False
 
         request_bootstrap_token = authorization.split()[-1]
-        return settings.BOOTSTRAP_TOKEN == request_bootstrap_token
+        return hmac.compare_digest(
+            settings.BOOTSTRAP_TOKEN.encode(),
+            request_bootstrap_token.encode()
+        )
 
 
 class ServiceAccountSignaturePermission(permissions.BasePermission):
