@@ -8,7 +8,6 @@ This API retrieves account secrets for PAM assets, supports RESTful requests, an
 
 - `Node.js 16+`
 - `axios ^1.7.9`
-- `moment ^2.30.1`
 
 ## 3. Usage
 
