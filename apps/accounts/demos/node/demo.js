@@ -1,6 +1,5 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const moment = require('moment');
 
 const API_URL = process.env.API_URL || "http://127.0.0.1:8080";
 const KEY_ID = process.env.API_KEY_ID || "72b0b0aa-ad82-4182-a631-ae4865e8ae0e";
@@ -16,7 +15,7 @@ class APIClient {
     }
 
     signRequest(method, url, params, headers) {
-        const date = moment().utc().format('ddd, DD MMM YYYY HH:mm:ss [GMT]');
+        const date = new Date().toUTCString();
         const queryString = Object.keys(params).length ? `?${new URLSearchParams(params).toString()}` : "";
         const requestTarget = `${method.toLowerCase()} ${url}${queryString}`;
         headers['Date'] = date;
