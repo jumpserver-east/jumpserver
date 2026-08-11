@@ -9,7 +9,10 @@ from accounts import serializers
 from accounts.const import (
     AutomationTypes, ChangeSecretRecordStatusChoice
 )
-from accounts.filters import ChangeSecretRecordFilterSet, ChangeSecretStatusFilterSet
+from accounts.filters import (
+    ChangeSecretAutomationFilterSet, ChangeSecretRecordFilterSet,
+    ChangeSecretStatusFilterSet,
+)
 from accounts.models import ChangeSecretAutomation, ChangeSecretRecord, Account
 from accounts.tasks import execute_automation_record_task
 from accounts.utils import account_secret_task_status
@@ -33,9 +36,12 @@ __all__ = [
 class ChangeSecretAutomationViewSet(OrgBulkModelViewSet):
     model = ChangeSecretAutomation
     permission_classes = [RBACPermission, IsValidLicense]
-    filterset_fields = ('name', 'secret_type', 'secret_strategy')
-    search_fields = filterset_fields
-    serializer_class = serializers.ChangeSecretAutomationSerializer
+    filterset_class = ChangeSecretAutomationFilterSet
+    search_fields = ('name',)
+    serializer_classes = {
+        'default': serializers.ChangeSecretAutomationSerializer,
+        'list': serializers.ChangeSecretAutomationListSerializer,
+    }
 
 
 class ChangeSecretRecordViewSet(mixins.ListModelMixin, OrgGenericViewSet):

@@ -30,6 +30,7 @@ class SettingsApi(generics.RetrieveUpdateAPIView):
         'all': serializers.SettingsSerializer,
         'basic': serializers.BasicSettingSerializer,
         'terminal': serializers.TerminalSettingSerializer,
+        'luna': serializers.LunaSettingSerializer,
         'security': serializers.SecuritySettingSerializer,
         'security_auth': serializers.SecurityAuthSerializer,
         'security_basic': serializers.SecurityBasicSerializer,
@@ -73,12 +74,14 @@ class SettingsApi(generics.RetrieveUpdateAPIView):
         'ops': serializers.OpsSettingSerializer,
         'virtualapp': serializers.VirtualAppSerializer,
         'tool': serializers.ToolSerializer,
+        'task_notice': serializers.TaskNoticeSettingSerializer,
     }
 
     rbac_category_permissions = {
         'basic': 'settings.change_basic',
         'tool': 'rbac.view_systemtools',
         'terminal': 'settings.change_terminal',
+        'luna': 'settings.change_terminal',
         'ops': 'settings.change_ops',
         'ticket': 'settings.change_ticket',
         'virtualapp': 'settings.change_virtualapp',
@@ -89,6 +92,7 @@ class SettingsApi(generics.RetrieveUpdateAPIView):
         'security_session': 'settings.change_security',
         'security_password': 'settings.change_security',
         'security_login_limit': 'settings.change_security',
+        'task_notice': 'settings.change_security',
         'ldap': 'settings.change_auth',
         'ldap_ha': 'settings.change_auth',
         'cas': 'settings.change_auth',

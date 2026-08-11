@@ -575,6 +575,8 @@ class Config(dict):
 
         # Email
         'EMAIL_PROTOCOL': 'smtp',
+        'EMAIL_CERT_VERIFY_MODE': 'system',
+        'EMAIL_CACERT_CONTENT': '',
         'EMAIL_CUSTOM_USER_CREATED_SUBJECT': _('Create account successfully'),
         'EMAIL_CUSTOM_USER_CREATED_HONORIFIC': _('Hello'),
         'EMAIL_CUSTOM_USER_CREATED_BODY': _('Your account has been created successfully'),
@@ -692,9 +694,28 @@ class Config(dict):
 
         'PERM_EXPIRED_CHECK_PERIODIC': 60 * 60,
         'PERM_EXPIRED_NOTICE_DAYS': 3,
+        'USER_EXPIRED_FIRST_NOTICE_DAYS': 5,
+        'USER_EXPIRED_DAILY_NOTICE_DAYS': 5,
+        'PERM_EXPIRED_FIRST_NOTICE_DAYS': 3,
+        'PERM_EXPIRED_DAILY_NOTICE_DAYS': 3,
         'PERM_TREE_REGEN_INTERVAL': 1,
         'FLOWER_URL': "127.0.0.1:5555",
         'LANGUAGE_CODE': 'en',
+        # Luna user preference defaults
+        'LUNA_DEFAULT_IS_ASYNC_ASSET_TREE': True,
+        'LUNA_DEFAULT_CONNECT_DEFAULT_OPEN_METHOD': 'current',
+        'LUNA_DEFAULT_THEMES': 'default',
+        'LUNA_DEFAULT_RDP_RESOLUTION': 'auto',
+        'LUNA_DEFAULT_KEYBOARD_LAYOUT': 'en-us-qwerty',
+        'LUNA_DEFAULT_RDP_CLIENT_OPTION': ['full_screen'],
+        'LUNA_DEFAULT_RDP_COLOR_QUALITY': '32',
+        'LUNA_DEFAULT_RDP_SMART_SIZE': '0',
+        'LUNA_DEFAULT_APPLET_CONNECTION_METHOD': 'web',
+        'LUNA_DEFAULT_FILE_NAME_CONFLICT_RESOLUTION': 'replace',
+        'LUNA_DEFAULT_CHARACTER_TERMINAL_FONT_SIZE': 14,
+        'LUNA_DEFAULT_IS_BACKSPACE_AS_CTRL_H': False,
+        'LUNA_DEFAULT_IS_RIGHT_CLICK_QUICKLY_PASTE': False,
+        'LUNA_DEFAULT_TERMINAL_THEME_NAME': 'Default',
         'TIME_ZONE': 'Asia/Shanghai',
         'FORCE_SCRIPT_NAME': '',
         'SESSION_COOKIE_SECURE': False,
@@ -826,6 +847,8 @@ class Config(dict):
     old_config_map = {
         'CONNECTION_TOKEN_ONETIME_EXPIRATION': 'CONNECTION_TOKEN_EXPIRATION',
         'CONNECTION_TOKEN_REUSABLE_EXPIRATION': 'CONNECTION_TOKEN_EXPIRATION_MAX',
+        'PERM_EXPIRED_FIRST_NOTICE_DAYS': 'PERM_EXPIRED_NOTICE_DAYS',
+        'PERM_EXPIRED_DAILY_NOTICE_DAYS': 'PERM_EXPIRED_NOTICE_DAYS',
     }
 
     def __init__(self, *args):
