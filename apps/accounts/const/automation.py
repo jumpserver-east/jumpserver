@@ -56,7 +56,7 @@ class SecretStrategy(models.TextChoices):
 
 class SSHKeyStrategy(models.TextChoices):
     # add = 'add', _('Append SSH KEY')
-    set_jms = 'set_jms', _('Replace (Replace only keys pushed by JumpServer) ')
+    set_jms = 'set_jms', _('Replace (Replace only keys pushed by system) ')
     set = 'set', _('Empty and append SSH KEY')
 
 
@@ -112,9 +112,10 @@ class AccountBackupType(models.TextChoices):
 
 
 class ChangeSecretRecordStatusChoice(models.TextChoices):
-    failed = 'failed', _('Failed')
     success = 'success', _('Success')
+    failed = 'failed', _('Failed')
     pending = 'pending', _('Pending')
+    unverified = 'unverified', _('Unverified')
 
 
 class ChangeSecretAccountStatus(models.TextChoices):

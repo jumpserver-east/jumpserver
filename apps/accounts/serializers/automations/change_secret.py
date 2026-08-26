@@ -13,15 +13,17 @@ from accounts.models import (
 )
 from accounts.serializers import AuthValidateMixin, PasswordRulesSerializer
 from assets.models import Asset
+from common.serializers import SecretReadableCheckMixin
 from common.serializers.fields import LabeledChoiceField, ObjectRelatedField
 from common.utils import get_logger
-from .base import BaseAutomationSerializer
+from .base import BaseAutomationSerializer, AutomationListSerializerMixin
 from ...utils import account_secret_task_status
 
 logger = get_logger(__file__)
 
 __all__ = [
     'ChangeSecretAutomationSerializer',
+    'ChangeSecretAutomationListSerializer',
     'ChangeSecretRecordSerializer',
     'ChangeSecretRecordViewSecretSerializer',
     'ChangeSecretRecordBackUpSerializer',
@@ -72,7 +74,10 @@ class ChangeSecretAutomationSerializer(AuthValidateMixin, BaseAutomationSerializ
         return AutomationTypes.change_secret
 
     def validate_password_rules(self, password_rules):
-        secret_type = self.initial_data['secret_type']
+        secret_type = self.initial_data.get(
+            'secret_type',
+            getattr(self.instance, 'secret_type', None),
+        )
         if secret_type != SecretType.PASSWORD:
             return password_rules
 
@@ -95,8 +100,24 @@ class ChangeSecretAutomationSerializer(AuthValidateMixin, BaseAutomationSerializ
         return password_rules
 
     def validate(self, attrs):
-        secret_type = attrs.get('secret_type')
-        secret_strategy = attrs.get('secret_strategy')
+        secret_type = attrs.get(
+            'secret_type',
+            getattr(self.instance, 'secret_type', None),
+        )
+        secret_strategy = attrs.get(
+            'secret_strategy',
+            getattr(self.instance, 'secret_strategy', None),
+        )
+        if secret_strategy == SecretStrategy.custom:
+            secret = attrs.get(
+                'secret',
+                getattr(self.instance, 'secret', None),
+            )
+            if not secret:
+                raise serializers.ValidationError({
+                    'secret': _('Secret is required for the custom strategy')
+                })
+
         if secret_type == SecretType.PASSWORD:
             attrs.pop('ssh_key_change_strategy', None)
             if secret_strategy == SecretStrategy.custom:
@@ -108,6 +129,15 @@ class ChangeSecretAutomationSerializer(AuthValidateMixin, BaseAutomationSerializ
             if secret_strategy != SecretStrategy.custom:
                 attrs.pop('secret', None)
         return attrs
+
+
+class ChangeSecretAutomationListSerializer(AutomationListSerializerMixin, ChangeSecretAutomationSerializer):
+    class Meta(ChangeSecretAutomationSerializer.Meta):
+        relation_count_fields = {'assets_amount': 'assets', 'nodes_amount': 'nodes'}
+        fields = [
+            f for f in ChangeSecretAutomationSerializer.Meta.fields
+            if f not in ('assets', 'nodes', 'recipients')
+        ] + ['assets_amount', 'nodes_amount']
 
 
 class ChangeSecretRecordSerializer(serializers.ModelSerializer):
@@ -126,6 +156,7 @@ class ChangeSecretRecordSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'asset', 'account', 'date_finished',
             'status', 'is_success', 'error', 'execution',
+            'verification_status', 'verification_error', 'date_verified',
         ]
         read_only_fields = fields
 
@@ -134,12 +165,13 @@ class ChangeSecretRecordSerializer(serializers.ModelSerializer):
         return obj.status == ChangeSecretRecordStatusChoice.success
 
 
-class ChangeSecretRecordViewSecretSerializer(serializers.ModelSerializer):
+class ChangeSecretRecordViewSecretSerializer(SecretReadableCheckMixin, serializers.ModelSerializer):
     class Meta:
         model = ChangeSecretRecord
         fields = [
             'id', 'old_secret', 'new_secret',
         ]
+        secret_fields = ['old_secret', 'new_secret']
         read_only_fields = fields
 
 
@@ -168,6 +200,8 @@ class ChangeSecretRecordBackUpSerializer(serializers.ModelSerializer):
     def get_is_success(obj) -> str:
         if obj.status == ChangeSecretRecordStatusChoice.success.value:
             return _("Success")
+        if obj.status == ChangeSecretRecordStatusChoice.unverified.value:
+            return _("Unverified")
         return _("Failed")
 
 

@@ -11,7 +11,7 @@ from django.core.cache import cache
 from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
-from common.db.utils import close_old_connections
+from common.db.utils import close_old_connections, safe_db_connection
 from common.utils import get_logger
 from orgs.mixins.ws import OrgMixin
 from orgs.models import Organization
@@ -148,8 +148,9 @@ class LdapWebsocket(AsyncJsonWebsocketConsumer, OrgMixin):
             await self.send_msg(msg='Exception: %s' % error)
 
     def run_func(self, func_name, data):
-        with translation.override(getattr(self.scope['user'], 'lang') or settings.LANGUAGE_CODE):
-            return getattr(self, func_name)(data)
+        with safe_db_connection():
+            with translation.override(getattr(self.scope['user'], 'lang') or settings.LANGUAGE_CODE):
+                return getattr(self, func_name)(data)
 
     async def send_msg(self, ok=True, msg=''):
         await self.send_json({'ok': ok, 'msg': f'{msg}'})
@@ -164,7 +165,10 @@ class LdapWebsocket(AsyncJsonWebsocketConsumer, OrgMixin):
         config = {
             'server_uri': serializer.validated_data.get(f"{prefix}SERVER_URI"),
             'bind_dn': serializer.validated_data.get(f"{prefix}BIND_DN"),
-            'use_ssl': serializer.validated_data.get(f"{prefix}START_TLS", False),
+            'start_tls': serializer.validated_data.get(f"{prefix}START_TLS", False),
+            'cacert_content': serializer.validated_data.get(f"{prefix}CACERT_CONTENT"),
+            'cert_content': serializer.validated_data.get(f"{prefix}CERT_CONTENT"),
+            'key_content': serializer.validated_data.get(f"{prefix}KEY_CONTENT"),
             'search_ou': serializer.validated_data.get(f"{prefix}SEARCH_OU"),
             'search_filter': serializer.validated_data.get(f"{prefix}SEARCH_FILTER"),
             'attr_map': serializer.validated_data.get(f"{prefix}USER_ATTR_MAP"),
@@ -195,7 +199,7 @@ class LdapWebsocket(AsyncJsonWebsocketConsumer, OrgMixin):
         if not serializer.is_valid():
             self.send_msg(msg=f'error: {str(serializer.errors)}')
         config = self.get_ldap_config(serializer)
-        ok, msg = LDAPTestUtil(config).test_config()
+        ok, msg = LDAPTestUtil(config, category=self.category).test_config()
         if ok:
             self.set_task_status_over(CACHE_KEY_LDAP_TEST_CONFIG_TASK_STATUS)
         return ok, msg

@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from accounts import serializers
+from accounts.filters import IntegrationApplicationFilterSet
 from accounts.models import IntegrationApplication
 from audits.models import IntegrationApplicationLog
 from authentication.permissions import UserConfirmation, ConfirmType
@@ -18,6 +19,7 @@ from rbac.permissions import RBACPermission
 
 class IntegrationApplicationViewSet(OrgBulkModelViewSet):
     model = IntegrationApplication
+    filterset_class = IntegrationApplicationFilterSet
     search_fields = ('name', 'comment')
     serializer_classes = {
         'default': serializers.IntegrationApplicationSerializer,
@@ -26,7 +28,8 @@ class IntegrationApplicationViewSet(OrgBulkModelViewSet):
     rbac_perms = {
         'get_once_secret': 'accounts.change_integrationapplication',
         'get_account_secret': 'accounts.view_integrationapplication',
-        'get_sdks_info': 'accounts.view_integrationapplication'
+        'get_sdks_info': 'accounts.view_integrationapplication',
+        'refresh_secret': 'accounts.change_integrationapplication',
     }
 
     def read_file(self, path):
@@ -52,6 +55,8 @@ class IntegrationApplicationViewSet(OrgBulkModelViewSet):
         demo_path = os.path.join(sdk_path, f'demo.{code_suffix_mapper[sdk_language]}')
 
         readme_content = self.read_file(readme_path)
+        if not readme_content:
+            readme_content = self.read_file(os.path.join(sdk_path, 'README.en.md'))
         demo_content = self.read_file(demo_path)
 
         return Response(data={'readme': readme_content, 'code': demo_content})
@@ -63,6 +68,15 @@ class IntegrationApplicationViewSet(OrgBulkModelViewSet):
     def get_once_secret(self, request, *args, **kwargs):
         instance = self.get_object()
         return Response(data={'id': instance.id, 'secret': instance.secret})
+    
+    @action(
+        ['GET'], detail=True, url_path='refresh-secret',
+        permission_classes=[RBACPermission]
+    )
+    def refresh_secret(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.refresh_secret()
+        return Response(data={'id': instance.id, 'msg': 'Successfully refreshed secret'})
 
     @action(['GET'], detail=False, url_path='account-secret',
             permission_classes=[RBACPermission])
@@ -83,5 +97,5 @@ class IntegrationApplicationViewSet(OrgBulkModelViewSet):
         )
         
         # 根据配置决定是否返回密码
-        secret = account.secret if settings.SECURITY_ACCOUNT_SECRET_READ else None
+        secret = None if settings.SECURITY_DISABLE_VIEW_SECRET else account.secret
         return Response(data={'id': request.user.id, 'secret': secret})

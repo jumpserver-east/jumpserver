@@ -2,7 +2,11 @@ import base64
 import json
 import os
 import urllib.parse
+from struct import pack
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.serialization import pkcs7
 from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -15,6 +19,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from accounts.const import AliasAccount
+from accounts.utils import validate_account_username
 from acls.notifications import AssetLoginReminderMsg
 from common.api import JMSModelViewSet
 from common.exceptions import JMSException
@@ -26,8 +31,6 @@ from orgs.utils import tmp_to_org
 from perms.models import ActionChoices
 from terminal.connect_methods import NativeClient, ConnectMethodUtil, WebMethod
 from terminal.models import EndpointRule, Endpoint
-from users.const import FileNameConflictResolution
-from users.const import RDPSmartSize, RDPColorQuality
 from users.models import Preference
 from .face import FaceMonitorContext
 from ..mixins import AuthFaceMixin
@@ -46,6 +49,154 @@ logger = get_logger(__name__)
 class RDPFileClientProtocolURLMixin:
     request: Request
     get_serializer: callable
+
+    RDP_SIGN_SECURE_SETTINGS = [
+        ('full address:s:', 'Full Address'),
+        ('alternate full address:s:', 'Alternate Full Address'),
+        ('pcb:s:', 'PCB'),
+        ('use redirection server name:i:', 'Use Redirection Server Name'),
+        ('server port:i:', 'Server Port'),
+        ('negotiate security layer:i:', 'Negotiate Security Layer'),
+        ('enablecredsspsupport:i:', 'EnableCredSspSupport'),
+        ('disableconnectionsharing:i:', 'DisableConnectionSharing'),
+        ('autoreconnection enabled:i:', 'AutoReconnection Enabled'),
+        ('gatewayhostname:s:', 'GatewayHostname'),
+        ('gatewayusagemethod:i:', 'GatewayUsageMethod'),
+        ('gatewayprofileusagemethod:i:', 'GatewayProfileUsageMethod'),
+        ('gatewaycredentialssource:i:', 'GatewayCredentialsSource'),
+        ('support url:s:', 'Support URL'),
+        ('promptcredentialonce:i:', 'PromptCredentialOnce'),
+        ('require pre-authentication:i:', 'Require pre-authentication'),
+        ('pre-authentication server address:s:', 'Pre-authentication server address'),
+        ('alternate shell:s:', 'Alternate Shell'),
+        ('shell working directory:s:', 'Shell Working Directory'),
+        ('remoteapplicationprogram:s:', 'RemoteApplicationProgram'),
+        ('remoteapplicationexpandworkingdir:s:', 'RemoteApplicationExpandWorkingdir'),
+        ('remoteapplicationmode:i:', 'RemoteApplicationMode'),
+        ('remoteapplicationguid:s:', 'RemoteApplicationGuid'),
+        ('remoteapplicationname:s:', 'RemoteApplicationName'),
+        ('remoteapplicationicon:s:', 'RemoteApplicationIcon'),
+        ('remoteapplicationfile:s:', 'RemoteApplicationFile'),
+        ('remoteapplicationfileextensions:s:', 'RemoteApplicationFileExtensions'),
+        ('remoteapplicationcmdline:s:', 'RemoteApplicationCmdLine'),
+        ('remoteapplicationexpandcmdline:s:', 'RemoteApplicationExpandCmdLine'),
+        ('prompt for credentials:i:', 'Prompt For Credentials'),
+        ('authentication level:i:', 'Authentication Level'),
+        ('audiomode:i:', 'AudioMode'),
+        ('redirectdrives:i:', 'RedirectDrives'),
+        ('redirectprinters:i:', 'RedirectPrinters'),
+        ('redirectcomports:i:', 'RedirectCOMPorts'),
+        ('redirectsmartcards:i:', 'RedirectSmartCards'),
+        ('redirectposdevices:i:', 'RedirectPOSDevices'),
+        ('redirectclipboard:i:', 'RedirectClipboard'),
+        ('devicestoredirect:s:', 'DevicesToRedirect'),
+        ('drivestoredirect:s:', 'DrivesToRedirect'),
+        ('loadbalanceinfo:s:', 'LoadBalanceInfo'),
+        ('redirectdirectx:i:', 'RedirectDirectX'),
+        ('rdgiskdcproxy:i:', 'RDGIsKDCProxy'),
+        ('kdcproxyname:s:', 'KDCProxyName'),
+        ('eventloguploadaddress:s:', 'EventLogUploadAddress'),
+        ('redirectwebauthn:i:', 'RedirectWebAuthn'),
+    ]
+
+    @classmethod
+    def _collect_rdp_sign_lines(cls, settings_lines):
+        signnames = []
+        signlines = []
+        for prefix, sign_name in cls.RDP_SIGN_SECURE_SETTINGS:
+            for line in settings_lines:
+                if line.startswith(prefix):
+                    signnames.append(sign_name)
+                    signlines.append(line)
+        return signnames, signlines
+
+    @classmethod
+    def _try_sign_rdp_content(cls, content):
+        if not settings.RDP_SIGN_ENABLED:
+            return content
+        cert_dir = os.path.join(settings.PROJECT_DIR, 'data', 'certs')
+        if not os.path.exists(cert_dir):
+            logger.error(f'rdp sign cert dir [{cert_dir}] not exists')
+            return content
+        
+        certfile = os.path.join(cert_dir, settings.RDP_SIGN_CERT)
+        if not os.path.exists(certfile):
+            logger.error(f'rdp sign cert file [{certfile}] not exists')
+            return content
+        
+        keyfile = os.path.join(cert_dir, settings.RDP_SIGN_CERT_KEY)
+        if not os.path.exists(keyfile):
+            logger.warning(f'rdp sign cert file [{keyfile}] not exists')
+            keyfile = None
+            return content
+
+        settings_lines = []
+        full_address = None
+        alternate_full_address = None
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('signature:s:') or line.startswith('signscope:s:'):
+                continue
+            if line.startswith('full address:s:'):
+                full_address = line[15:]
+            elif line.startswith('alternate full address:s:'):
+                alternate_full_address = line[25:]
+            settings_lines.append(line)
+
+        # Keep alternate full address aligned with full address to prevent tampering.
+        if full_address and not alternate_full_address:
+            settings_lines.append(f'alternate full address:s:{full_address}')
+
+        signnames, signlines = cls._collect_rdp_sign_lines(settings_lines)
+        if not signnames or not signlines:
+            return content
+
+        msgtext = '\r\n'.join(signlines) + '\r\n' + 'signscope:s:' + ','.join(signnames) + '\r\n' + '\x00'
+        msgblob = msgtext.encode('UTF-16LE')
+
+        try:
+            with open(certfile, 'rb') as f:
+                cert_pem = f.read()
+            cert = x509.load_pem_x509_certificate(cert_pem)
+            if keyfile:
+                with open(keyfile, 'rb') as f:
+                    key_pem = f.read()
+            else:
+                key_pem = cert_pem
+            private_key = serialization.load_pem_private_key(key_pem, password=None)
+            pkcs7_der = (
+                pkcs7.PKCS7SignatureBuilder()
+                .set_data(msgblob)
+                .add_signer(cert, private_key, hashes.SHA256())
+                .sign(
+                    serialization.Encoding.DER,
+                    [
+                        pkcs7.PKCS7Options.Binary,
+                        pkcs7.PKCS7Options.DetachedSignature,
+                        pkcs7.PKCS7Options.NoAttributes,
+                    ],
+                )
+            )
+        except OSError as e:
+            logger.warning('RDP file sign failed to read cert/key: %s', e)
+            return content
+        except ValueError as e:
+            logger.warning('RDP file sign failed (invalid cert/key PEM): %s', e)
+            return content
+        except Exception as e:
+            logger.warning('RDP file sign failed: %s', e)
+            return content
+
+        msgsig = pack('<I', 0x00010001)
+        msgsig += pack('<I', 0x00000001)
+        msgsig += pack('<I', len(pkcs7_der))
+        msgsig += pkcs7_der
+        sigval = base64.b64encode(msgsig).decode('ascii')
+
+        signed_lines = settings_lines + [f'signscope:s:{",".join(signnames)}', f'signature:s:{sigval}']
+        return '\n'.join(signed_lines) + '\n'
 
     def get_rdp_file_info(self, token: ConnectionToken):
         rdp_options = {
@@ -100,19 +251,39 @@ class RDPFileClientProtocolURLMixin:
             "low_speed_broadband": rdp_low_speed_broadband_option,
             "high_speed_broadband": rdp_high_speed_broadband_option,
         }
+
+        client_options = token.user.preference.get_value(
+            'rdp_client_option', category='luna',
+            default=settings.LUNA_DEFAULT_RDP_CLIENT_OPTION
+        )
+        if isinstance(client_options, str):
+            try:
+                client_options = json.loads(client_options)
+            except json.JSONDecodeError:
+                client_options = settings.LUNA_DEFAULT_RDP_CLIENT_OPTION
+        if not isinstance(client_options, (list, set, tuple)):
+            client_options = settings.LUNA_DEFAULT_RDP_CLIENT_OPTION
+        client_options = set(client_options)
+
         # 设置多屏显示
-        multi_mon = is_true(self.request.query_params.get('multi_mon'))
+        multi_mon_value = self.request.query_params.get('multi_mon')
+        multi_mon = 'multi_screen' in client_options if multi_mon_value is None else is_true(multi_mon_value)
         if multi_mon:
             rdp_options['use multimon:i'] = '1'
 
         # 设置磁盘挂载
-        drives_redirect = is_true(self.request.query_params.get('drives_redirect'))
+        drives_redirect_value = self.request.query_params.get('drives_redirect')
+        drives_redirect = (
+            'drives_redirect' in client_options
+            if drives_redirect_value is None else is_true(drives_redirect_value)
+        )
         if drives_redirect:
             if ActionChoices.contains(token.actions, ActionChoices.transfer()):
                 rdp_options['drivestoredirect:s'] = '*'
 
         # 设置全屏
-        full_screen = is_true(self.request.query_params.get('full_screen'))
+        full_screen_value = self.request.query_params.get('full_screen')
+        full_screen = 'full_screen' in client_options if full_screen_value is None else is_true(full_screen_value)
         rdp_options['screen mode id:i'] = '2' if full_screen else '1'
 
         # 设置 RDP Server 地址
@@ -125,7 +296,12 @@ class RDPFileClientProtocolURLMixin:
 
         # 设置宽高
 
-        resolution_value = token.connect_options.get('resolution', 'auto')
+        resolution_value = token.connect_options.get('resolution')
+        if not resolution_value:
+            resolution_value = token.user.preference.get_value(
+                'rdp_resolution', category='luna',
+                default=settings.LUNA_DEFAULT_RDP_RESOLUTION
+            )
         if resolution_value != 'auto':
             width, height = resolution_value.split('x')
             if width and height:
@@ -135,12 +311,35 @@ class RDPFileClientProtocolURLMixin:
                 rdp_options['dynamic resolution:i'] = '0'
 
         color_quality = self.request.query_params.get('rdp_color_quality')
-        color_quality = color_quality if color_quality else os.getenv('JUMPSERVER_COLOR_DEPTH', RDPColorQuality.HIGH)
+        if not color_quality:
+            color_quality = token.user.preference.get_value(
+                'rdp_color_quality', category='luna',
+                default=os.getenv('JUMPSERVER_COLOR_DEPTH', settings.LUNA_DEFAULT_RDP_COLOR_QUALITY)
+            )
 
         # 设置其他选项
         rdp_options['session bpp:i'] = color_quality
         rdp_options['audiomode:i'] = self.parse_env_bool('JUMPSERVER_DISABLE_AUDIO', 'false', '2', '0')
-        rdp_options['smart sizing:i'] = self.request.query_params.get('rdp_smart_size', RDPSmartSize.DISABLE)
+
+        # 设置远程麦克风。请求参数用于兼容直接下载 RDP 文件的场景，
+        # 连接令牌中的临时配置优先于用户偏好。
+        remote_microphone_value = self.request.query_params.get('remote_microphone')
+        if remote_microphone_value is None:
+            remote_microphone_value = token.connect_options.get('remote_microphone')
+        if remote_microphone_value is None:
+            remote_microphone = 'remote_microphone' in client_options
+        else:
+            remote_microphone = is_true(remote_microphone_value)
+        if remote_microphone:
+            rdp_options['audiocapturemode:i'] = '1'
+
+        smart_size = self.request.query_params.get('rdp_smart_size')
+        if smart_size is None:
+            smart_size = token.user.preference.get_value(
+                'rdp_smart_size', category='luna',
+                default=settings.LUNA_DEFAULT_RDP_SMART_SIZE
+            )
+        rdp_options['smart sizing:i'] = smart_size
 
         # 设置远程应用, 不是 Mstsc
         if token.connect_method != NativeClient.mstsc:
@@ -162,6 +361,7 @@ class RDPFileClientProtocolURLMixin:
         for k, v in rdp_options.items():
             content += f'{k}:{v}\n'
 
+        content = self._try_sign_rdp_content(content)
         return filename, content
 
     @staticmethod
@@ -173,10 +373,19 @@ class RDPFileClientProtocolURLMixin:
         return name
 
     def get_connect_filename(self, prefix_name):
-        filename = f'{prefix_name}-jumpserver'
+        filename = prefix_name
         filename = self.escape_name(filename)
         return filename
 
+    @staticmethod
+    def get_token_account_display(token):  #新增方法
+            try:
+                account = token.account_object
+            except Exception:
+                account = None
+            if account:
+                return account.full_username or account.username or account.name or token.account
+            return token.input_username or token.account    
     @staticmethod
     def parse_env_bool(env_key, env_default, true_value, false_value):
         return true_value if is_true(os.getenv(env_key, env_default)) else false_value
@@ -192,7 +401,7 @@ class RDPFileClientProtocolURLMixin:
         if connect_method_dict is None:
             raise ValueError('Connect method not support: {}'.format(connect_method_name))
 
-        account = token.account or token.input_username
+        account = self.get_token_account_display(token)  #修改account
         datetime = timezone.localtime(timezone.now()).strftime('%Y-%m-%d_%H:%M:%S')
         name = account + '@' + asset.name + '[' + datetime + ']'
         data = {
@@ -336,6 +545,7 @@ class ExtraActionApiMixin(RDPFileClientProtocolURLMixin):
 
 
 class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixin, JMSModelViewSet):
+    queryset = ConnectionToken.objects.none()
     filterset_fields = (
         'user_display', 'asset_display'
     )
@@ -376,16 +586,55 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
     def _insert_connect_options(self, data, user):
         connect_options = data.pop('connect_options', {})
         default_name_opts = {
-            'file_name_conflict_resolution': FileNameConflictResolution.REPLACE,
-            'terminal_theme_name': 'Default',
+            'file_name_conflict_resolution': settings.LUNA_DEFAULT_FILE_NAME_CONFLICT_RESOLUTION,
+            'terminal_theme_name': settings.LUNA_DEFAULT_TERMINAL_THEME_NAME,
         }
+        backspace_preference_name = 'is_backspace_as_ctrl_h'
+        resolution_preference_name = 'rdp_resolution'
+        rdp_client_option_preference_name = 'rdp_client_option'
         preferences_query = Preference.objects.filter(
-            user=user, category='luna', name__in=default_name_opts.keys()
+            user=user, category='luna',
+            name__in=(
+                *default_name_opts.keys(),
+                backspace_preference_name,
+                resolution_preference_name,
+                rdp_client_option_preference_name,
+            )
         ).values_list('name', 'value')
         preferences = dict(preferences_query)
         for name in default_name_opts.keys():
             value = preferences.get(name, default_name_opts[name])
             connect_options[name] = value
+
+        # The advanced option submitted by Luna takes precedence.  When it is
+        # absent, use the personal preference as the connection default.
+        if 'backspaceAsCtrlH' not in connect_options:
+            # Koko consumes this option using camelCase. Preferences are stored
+            # in a TextField, so convert the value back to a real boolean.
+            backspace_as_ctrl_h = preferences.get(
+                backspace_preference_name, settings.LUNA_DEFAULT_IS_BACKSPACE_AS_CTRL_H
+            )
+            connect_options['backspaceAsCtrlH'] = is_true(backspace_as_ctrl_h)
+
+        if data.get('protocol') == 'rdp':
+            if 'resolution' not in connect_options:
+                connect_options['resolution'] = preferences.get(
+                    resolution_preference_name, settings.LUNA_DEFAULT_RDP_RESOLUTION
+                )
+
+            if 'remote_microphone' not in connect_options:
+                rdp_client_options = preferences.get(
+                    rdp_client_option_preference_name,
+                    settings.LUNA_DEFAULT_RDP_CLIENT_OPTION,
+                )
+                if isinstance(rdp_client_options, str):
+                    try:
+                        rdp_client_options = json.loads(rdp_client_options)
+                    except json.JSONDecodeError:
+                        rdp_client_options = settings.LUNA_DEFAULT_RDP_CLIENT_OPTION
+                if not isinstance(rdp_client_options, (list, set, tuple)):
+                    rdp_client_options = settings.LUNA_DEFAULT_RDP_CLIENT_OPTION
+                connect_options['remote_microphone'] = 'remote_microphone' in rdp_client_options
         connect_options['lang'] = getattr(user, 'lang') or settings.LANGUAGE_CODE
         data['connect_options'] = connect_options
 
@@ -413,7 +662,12 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
         protocol = data.get('protocol')
         connect_method = data.get('connect_method')
         self.input_username = self.get_input_username(data)
+        if account_name == AliasAccount.INPUT:
+            # Manual account input can reach Luna directly, so validate before ACL/token creation.
+            self.input_username = validate_account_username(self.input_username)
+            data['input_username'] = self.input_username
         _data = self._validate(user, asset, account_name, protocol, connect_method)
+        _data['remote_addr'] = get_request_ip_or_data(self.request)
         data.update(_data)
         return serializer
 
@@ -422,6 +676,7 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
         asset = token.asset
         account_alias = token.account
         _data = self._validate(user, asset, account_alias, token.protocol, token.connect_method)
+        _data['remote_addr'] = get_request_ip_or_data(self.request)
         for k, v in _data.items():
             setattr(token, k, v)
         return token
@@ -438,9 +693,11 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
         account = self._validate_perm(user, asset, account_alias, protocol)
         if account.has_secret:
             data['input_secret'] = ''
+            data['input_secret_type'] = account.secret_type
 
-        if account.username != AliasAccount.INPUT:
+        if account_alias != AliasAccount.INPUT and account_alias != AliasAccount.USER:
             data['input_username'] = ''
+            data['input_secret_type'] = ''
 
         ticket = self._validate_acl(user, asset, account, connect_method, protocol)
         if ticket:
@@ -556,6 +813,20 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
         face_verify_token = self.create_face_verify_context(context_data)
         response.data['face_token'] = face_verify_token
 
+    @staticmethod
+    def format_validation_error(detail):
+        # Luna renders detail directly and cannot display DRF field-error dicts cleanly.
+        if isinstance(detail, dict):
+            errors = []
+            for messages in detail.values():
+                if isinstance(messages, (list, tuple)):
+                    messages = ', '.join([str(message) for message in messages])
+                errors.append(str(messages))
+            return '; '.join(errors)
+        if isinstance(detail, (list, tuple)):
+            return '; '.join([str(item) for item in detail])
+        return str(detail)
+
     def create(self, request, *args, **kwargs):
         try:
             response = super().create(request, *args, **kwargs)
@@ -563,6 +834,9 @@ class ConnectionTokenViewSet(AuthFaceMixin, ExtraActionApiMixin, RootOrgViewMixi
                 self.create_face_verify(response)
         except JMSException as e:
             data = {'code': e.detail.code, 'detail': e.detail}
+            return Response(data, status=e.status_code)
+        except ValidationError as e:
+            data = {'detail': self.format_validation_error(e.detail)}
             return Response(data, status=e.status_code)
         return response
 

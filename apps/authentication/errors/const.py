@@ -16,6 +16,11 @@ reason_usb_key_failed = "usb_key_failed"
 reason_usb_key_unset = "usb_key_unset"
 reason_usb_key_cert_verify_failed = "usb_key_cert_verify_failed"
 reason_usb_key_bind_required = "usb_key_bind_required"
+reason_invalid_login = 'invalid_login'
+reason_block_user_login = 'block_user_login'
+reason_block_ip_login = 'block_ip_login'
+reason_mfa_error = 'mfa_error'
+reason_block_mfa = 'block_mfa'
 
 reason_choices = {
     reason_password_failed: _('Username/password check failed'),
@@ -52,26 +57,33 @@ invalid_login_msg = _(
 )
 block_user_login_msg = _(
     "The account has been locked "
-    "(please contact admin to unlock it or try again after {} minutes)"
+    "(please contact admin to unlock it or try again after {block_time} minutes)"
 )
 block_ip_login_msg = _(
     "The address has been locked "
-    "(please contact admin to unlock it or try again after {} minutes)"
+    "(please contact admin to unlock it or try again after {block_time} minutes)"
 )
 block_mfa_msg = _(
     "The account has been locked "
-    "(please contact admin to unlock it or try again after {} minutes)"
+    "(please contact admin to unlock it or try again after {block_time} minutes)"
 )
 mfa_error_msg = _(
     "{error}, "
     "You can also try {times_try} times "
     "(The account will be temporarily locked for {block_time} minutes)"
 )
+reason_template_choices = {
+    reason_invalid_login: invalid_login_msg,
+    reason_block_user_login: block_user_login_msg,
+    reason_block_ip_login: block_ip_login_msg,
+    reason_mfa_error: mfa_error_msg,
+    reason_block_mfa: block_mfa_msg,
+}
 mfa_required_msg = _("MFA required")
 mfa_unset_msg = _("MFA not set, please set it first")
 login_confirm_required_msg = _("Login confirm required")
 login_confirm_wait_msg = _("Wait login confirm ticket for accept")
-login_confirm_error_msg = _("Login confirm ticket was {}")
+login_confirm_error_msg = _("Login confirm ticket was {status}")
 usb_key_unset_msg = _("USB Key not set, Please contact the administrator")
 usb_key_failed_msg = _("UKey check failed")
 usb_key_bind_required_msg = _("Please bind your USB Key first")

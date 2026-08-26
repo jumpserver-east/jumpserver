@@ -1,8 +1,8 @@
-from django.db.models import Count
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from common.serializers.fields import ObjectRelatedField, LabeledChoiceField
+from common.validators import ProjectUniqueValidator
 from orgs.mixins.serializers import BulkOrgResourceModelSerializer
 from .const import label_resource_types
 from .models import Label, LabeledResource
@@ -13,8 +13,11 @@ __all__ = ['LabelSerializer', 'LabeledResourceSerializer', 'ContentTypeResourceS
 class LabelSerializer(BulkOrgResourceModelSerializer):
     class Meta:
         model = Label
-        fields = [
-            'id', 'name', 'value', 'color', 'res_count',
+        relation_count_fields = {
+            'res_count': 'labeled_resources',
+        }
+        amount_fields = list(relation_count_fields)
+        fields = ['id', 'name', 'value', 'color'] + amount_fields + [
             'comment', 'date_created', 'date_updated'
         ]
         read_only_fields = ('date_created', 'date_updated', 'res_count')
@@ -32,11 +35,14 @@ class LabelSerializer(BulkOrgResourceModelSerializer):
         return self.validate_name(value)
 
     @classmethod
-    def setup_eager_loading(cls, queryset):
-        """ Perform necessary eager loading of data. """
-        queryset = queryset.annotate(res_count=Count('labeled_resources', distinct=True))
-        return queryset
-
+    def validate_name_value(cls, name, value):
+        serializer = cls(data={'name': name, 'value': value})
+        serializer.validators = [
+            v for v in serializer.validators
+            if not isinstance(v, (serializers.UniqueTogetherValidator, ProjectUniqueValidator))
+        ]
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
 
 class LabeledResourceSerializer(serializers.ModelSerializer):
     res_type = LabeledChoiceField(

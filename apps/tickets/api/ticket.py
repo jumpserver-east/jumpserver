@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -8,17 +9,19 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from audits.handler import create_or_update_operate_log
-from common.api import CommonApiMixin
+from common.api import CommonApiMixin, ReportExportMixin
 from common.const.http import POST, PUT, PATCH
 from orgs.utils import tmp_to_root_org, tmp_to_org
 from rbac.permissions import RBACPermission
 from tickets import filters
 from tickets import serializers
+from tickets.reporting import TicketReportExporter
 from tickets.models import (
     Ticket, ApplyAssetTicket, ApplyLoginTicket,
     ApplyLoginAssetTicket, ApplyCommandTicket
 )
 from tickets.permissions.ticket import IsAssignee, IsApplicant
+from tickets.errors import AlreadyClosed
 from ..const import TicketAction
 
 __all__ = [
@@ -28,16 +31,21 @@ __all__ = [
 ]
 
 
-class TicketViewSet(CommonApiMixin, viewsets.ModelViewSet):
+class TicketViewSet(ReportExportMixin, CommonApiMixin, viewsets.ModelViewSet):
     serializer_class = serializers.TicketSerializer
     serializer_classes = {
         'approve': serializers.TicketApproveSerializer
     }
     model = Ticket
+    report_exporter_class = TicketReportExporter
     perm_model = Ticket
     filterset_class = filters.TicketFilter
     search_fields = [
         'title', 'type', 'status'
+    ]
+    ordering_fields = [
+        'title', 'serial_num', 'type', 'state', 'status', 'applicant',
+        'date_created',
     ]
     ordering = ('-date_created',)
     rbac_perms = {
@@ -65,6 +73,11 @@ class TicketViewSet(CommonApiMixin, viewsets.ModelViewSet):
             raise MethodNotAllowed(self.action)
 
     def get_queryset(self):
+        assignee_id = self.request.query_params.get('assignees__id')
+        is_current_assignee = str(self.request.user.id) == assignee_id
+        if getattr(self, 'action', None) == 'list' and is_current_assignee:
+            return self.model.objects.all()
+
         with tmp_to_root_org():
             queryset = self.model.get_user_related_tickets(self.request.user)
         return queryset
@@ -99,19 +112,30 @@ class TicketViewSet(CommonApiMixin, viewsets.ModelViewSet):
         self.ticket_not_allowed()
 
         partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        with tmp_to_root_org():
-            serializer.is_valid(raise_exception=True)
-            instance = serializer.save()
-        instance.approve(processor=request.user)
+        with transaction.atomic():
+            instance = self.get_object()
+            instance = self.model.objects.select_for_update().get(pk=instance.pk)
+            self.check_object_permissions(request, instance)
+            if instance.is_status(instance.Status.closed):
+                raise AlreadyClosed
+
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            with tmp_to_root_org():
+                serializer.is_valid(raise_exception=True)
+                instance = serializer.save()
+            instance.approve(processor=request.user)
         self._record_operate_log(instance, TicketAction.approve)
         return Response('ok')
 
     @action(detail=True, methods=[PUT], permission_classes=[IsAssignee, ])
     def reject(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.reject(processor=request.user)
+        with transaction.atomic():
+            instance = self.get_object()
+            instance = self.model.objects.select_for_update().get(pk=instance.pk)
+            self.check_object_permissions(request, instance)
+            if instance.is_status(instance.Status.closed):
+                raise AlreadyClosed
+            instance.reject(processor=request.user)
         self._record_operate_log(instance, TicketAction.reject)
         return Response('ok')
 

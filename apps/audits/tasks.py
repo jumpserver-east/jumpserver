@@ -10,6 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils._os import safe_join
 from django.utils.translation import gettext_lazy as _
+from django.db.models import Min
 
 from common.const.crontab import CRONTAB_AT_AM_TWO
 from common.storage.ftp_file import FTPFileStorageHandler
@@ -85,6 +86,12 @@ def clean_celery_tasks_period():
     tasks = CeleryTaskExecution.objects.filter(date_start__isnull=True)
     tasks.delete()
     find_and_delete_files(settings.CELERY_LOG_DIR, name_pattern="*.log", mtime_days=expire_days)
+    if os.path.isdir(settings.ANSIBLE_LOG_DIR):
+        find_and_delete_files(
+            settings.ANSIBLE_LOG_DIR,
+            name_pattern="*.log",
+            mtime_days=expire_days,
+        )
     celery_log_path = safe_join(settings.LOG_DIR, 'celery.log')
     truncate_file(celery_log_path)
 
@@ -93,9 +100,61 @@ def batch_delete(queryset, batch_size=3000):
     model = queryset.model
     count = queryset.count()
     with transaction.atomic():
-        for i in range(0, count, batch_size):
-            pks = queryset[i:i + batch_size].values_list('id', flat=True)
+        for _ in range(0, count, batch_size):
+            pks = queryset[:batch_size].values_list('id', flat=True)
             model.objects.filter(id__in=list(pks)).delete()
+
+
+def delete_expired_commands_by_day(keep_days, direct_delete_limit=10000, batch_size=3000):
+    ''' Delete expired commands by day. '''
+    expire_timestamp = (timezone.now() - timezone.timedelta(days=keep_days)).timestamp()
+    expired_queryset = Command.objects.order_by().filter(timestamp__lt=expire_timestamp)
+    min_timestamp = expired_queryset.aggregate(min_ts=Min('timestamp')).get('min_ts')
+    if min_timestamp is None:
+        return
+    logger.info('Min date for expired commands: %s', datetime.datetime.fromtimestamp(min_timestamp))
+
+    tz = timezone.get_current_timezone()
+    current_day = datetime.datetime.fromtimestamp(min_timestamp, tz=tz).date()
+    expire_datetime = datetime.datetime.fromtimestamp(expire_timestamp, tz=tz)
+    expire_day = expire_datetime.date()
+    logger.info('Start clean expired session command by day, expire day: %s', expire_day)
+
+    while current_day <= expire_day:
+        day_start = datetime.datetime.combine(current_day, datetime.time.min, tzinfo=tz)
+        next_day = day_start + datetime.timedelta(days=1)
+
+        day_start_ts = day_start.timestamp()
+        day_end_ts = min(next_day.timestamp(), expire_timestamp)
+        if day_start_ts >= day_end_ts:
+            current_day += datetime.timedelta(days=1)
+            continue
+
+        logger.info('Clean session command for day: %s', current_day)
+        day_queryset = Command.objects.order_by().filter(timestamp__gte=day_start_ts, timestamp__lt=day_end_ts)
+        day_count = day_queryset.count()
+        logger.info('Start clean session command for %s, count=%s', current_day, day_count)
+        if day_count == 0:
+            current_day += datetime.timedelta(days=1)
+            continue
+
+        batch_delete(CommandHmac.objects.filter(
+            record_id__in=day_queryset.values_list('id', flat=True)
+        ))
+        if day_count <= direct_delete_limit:
+            logger.info('Direct delete session command for %s, count=%s', current_day, day_count)
+            day_queryset.delete()
+        else:
+            logger.info('Batch delete session command for %s, count=%s', current_day, day_count)
+            batch_delete(day_queryset, batch_size=batch_size)
+
+        logger.info(
+            "Clean session command done for %s, count=%s, mode=%s",
+            current_day,
+            day_count,
+            'direct' if day_count <= direct_delete_limit else 'batch',
+        )
+        current_day += datetime.timedelta(days=1)
 
 
 def remove_files_by_days(root_path, days, file_types=None):
@@ -120,19 +179,24 @@ def remove_files_by_days(root_path, days, file_types=None):
 def clean_expired_session_period():
     logger.info("Start clean expired session record, commands and replay")
     days = get_log_keep_day('TERMINAL_SESSION_KEEP_DURATION')
+
     expire_date = timezone.now() - timezone.timedelta(days=days)
     expired_sessions = Session.objects.filter(date_start__lt=expire_date)
-    timestamp = expire_date.timestamp()
-    expired_commands = Command.objects.filter(timestamp__lt=timestamp)
-    replay_dir = safe_join(default_storage.base_location, 'replay')
 
+    logger.info("Start clean session item")
     batch_delete(SessionHmac.objects.filter(record_id__in=expired_sessions.values_list('id', flat=True)))
     batch_delete(expired_sessions)
     logger.info("Clean session item done")
-    batch_delete(CommandHmac.objects.filter(record_id__in=expired_commands.values_list('id', flat=True)))
-    batch_delete(expired_commands)
+
+    logger.info("Start clean session command")
+    delete_expired_commands_by_day(keep_days=days)
     logger.info("Clean session command done")
+
+    logger.info("Start clean session replay")
+    replay_dir = safe_join(default_storage.base_location, 'replay')
     remove_files_by_days(replay_dir, days)
+    logger.info("Clean session replay files done")
+
     find_and_delete_empty_dirs(replay_dir)
     logger.info("Clean session replay done")
 

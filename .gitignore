@@ -49,3 +49,7 @@ apps.iml
 *.db
 *.mmdb
 *.ipdb
+context
+luna
+lina
+.envrc

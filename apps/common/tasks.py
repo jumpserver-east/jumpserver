@@ -11,6 +11,7 @@ from common.sdk.gm.piico import (
     summarize_piico_self_test,
 )
 from common.storage import jms_storage
+from common.utils import text_hmac_sha256
 from ops.celery.decorator import after_app_ready_start, register_as_period_task
 from users.models import User
 from .utils import get_logger
@@ -20,7 +21,7 @@ logger = get_logger(__file__)
 
 def get_email_connection(**kwargs):
     email_backend_map = {
-        'smtp': 'django.core.mail.backends.smtp.EmailBackend',
+        'smtp': 'jumpserver.rewriting.smtp.EmailBackend',
         'exchange': 'jumpserver.rewriting.exchange.EmailBackend'
     }
     return get_connection(
@@ -31,7 +32,8 @@ def get_email_connection(**kwargs):
 def task_activity_callback(self, subject, message, recipient_list, *args, **kwargs):
     from users.models import User
     email_list = recipient_list
-    resource_ids = list(User.objects.filter(email__in=email_list).values_list('id', flat=True))
+    email_lookup_list = [text_hmac_sha256(email) for email in email_list]
+    resource_ids = list(User.objects.filter(email_lookup__in=email_lookup_list).values_list('id', flat=True))
     return resource_ids,
 
 
@@ -71,7 +73,8 @@ def send_mail_async(*args, **kwargs):
         "send_mail_async called with subject=%r, recipients=%r", subject, recipient_list
     )
 
-    users = User.objects.filter(email__in=recipient_list).all()
+    email_lookup_list = [text_hmac_sha256(email) for email in recipient_list]
+    users = User.objects.filter(email_lookup__in=email_lookup_list).all()
     for user in users:
         try:
             with activate_user_language(user):
@@ -97,13 +100,13 @@ def send_mail_attachment_async(subject, message, recipient_list, attachment_list
         subject=subject,
         body=message,
         from_email=from_email,
-        to=recipient_list,
-        connection=get_email_connection(),
+        to=recipient_list
     )
     for attachment in attachment_list:
         email.attach_file(attachment)
+    email.send()
+    for attachment in attachment_list:
         os.remove(attachment)
-    return email.send()
 
 
 @shared_task(

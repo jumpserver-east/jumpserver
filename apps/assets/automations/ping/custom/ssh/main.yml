@@ -3,13 +3,16 @@
   vars:
     ansible_connection: local
     ansible_shell_type: sh
+    ansible_python_interpreter: "{{ local_python_interpreter }}"
     ansible_become: false
     ansible_timeout: 30
   tasks:
     - name: Test asset connection (paramiko)
       ssh_ping:
         login_user: "{{ jms_account.username }}"
-        login_password: "{{ jms_account.secret }}"
+        login_password: >-
+          {{ jms_account.secret
+             if jms_account.secret_type == 'password' else '' }}
         login_host: "{{ jms_asset.address }}"
         login_port: "{{ jms_asset.port }}"
         login_secret_type: "{{ jms_account.secret_type }}"
@@ -22,4 +25,3 @@
         old_ssh_version: "{{ jms_asset.old_ssh_version | default(False) }}"
         gateway_args: "{{ jms_asset.ansible_ssh_common_args | default(None) }}"
         recv_timeout: "{{ params.recv_timeout | default(30) }}"
-

@@ -44,6 +44,7 @@ class ConnectionToken(JMSOrgBaseModel):
     account = models.CharField(max_length=128, verbose_name=_("Account name"))  # 登录账号Name
     input_username = models.CharField(max_length=128, default='', blank=True, verbose_name=_("Input username"))
     input_secret = EncryptTextField(max_length=64, default='', blank=True, verbose_name=_("Input secret"))
+    input_secret_type = models.CharField(max_length=16, default='password', blank=True, null=True, verbose_name=_("Input secret type"))
     protocol = models.CharField(max_length=16, default=Protocol.ssh, verbose_name=_("Protocol"))
     connect_method = models.CharField(max_length=32, verbose_name=_("Connect method"))
     connect_options = models.JSONField(default=dict, verbose_name=_("Connect options"))
@@ -301,14 +302,16 @@ class ConnectionToken(JMSOrgBaseModel):
         if self.account.startswith('@'):
             account = VirtualAccount.get_special_account(
                 self.account, self.user, self.asset, input_username=self.input_username,
-                input_secret=self.input_secret, from_permed=False
+                input_secret=self.input_secret, input_secret_type=self.input_secret_type, 
+                from_permed=False
             )
         else:
             account = self.get_asset_accounts_by_alias(self.asset, self.account)
             if not account.secret and self.input_secret:
                 account.secret = self.input_secret
-            self.set_ad_domain_if_need(account)
-
+                account.secret_type = self.input_secret_type
+        
+        self.set_ad_domain_if_need(account)
         return account
 
     @lazyproperty
@@ -337,6 +340,56 @@ class ConnectionToken(JMSOrgBaseModel):
         with tmp_to_org(self.asset.org_id):
             acls = CommandFilterACL.filter_queryset(**kwargs).valid()
         return acls
+
+    @lazyproperty
+    def clipboard_acls(self):
+        from copy import copy
+
+        from acls.const import ActionChoices as ACLActionChoices
+        from acls.models import ClipboardACL
+
+        def merge_limit(values):
+            limited_values = [v for v in values if v > 0]
+            return min(limited_values) if limited_values else 0
+
+        def merge_action(acls):
+            return (
+                ACLActionChoices.accept
+                if all(acl.action == ACLActionChoices.accept for acl in acls)
+                else ACLActionChoices.reject
+            )
+
+        kwargs = {
+            'user': self.user,
+            'asset': self.asset,
+            'account': self.account_object,
+        }
+        with tmp_to_org(self.asset.org_id):
+            acls = ClipboardACL.filter_queryset(**kwargs).valid()
+
+        matched_acls = []
+        for operation in (ActionChoices.copy, ActionChoices.paste):
+            operation_acls = [
+                acl for acl in acls
+                if acl.matches_operation(operation)
+            ]
+            if not operation_acls:
+                continue
+
+            highest_priority = min(acl.priority for acl in operation_acls)
+            highest_priority_acls = [
+                acl for acl in operation_acls
+                if acl.priority == highest_priority
+            ]
+            acl = copy(highest_priority_acls[0])
+            acl.operations = operation
+            acl.action = merge_action(highest_priority_acls)
+            acl.copy_text_limit = merge_limit(a.copy_text_limit for a in highest_priority_acls)
+            acl.paste_text_limit = merge_limit(a.paste_text_limit for a in highest_priority_acls)
+            acl.download_file_size_limit = merge_limit(a.download_file_size_limit for a in highest_priority_acls)
+            acl.upload_file_size_limit = merge_limit(a.upload_file_size_limit for a in highest_priority_acls)
+            matched_acls.append(acl)
+        return matched_acls
 
     @lazyproperty
     def data_masking_rules(self):

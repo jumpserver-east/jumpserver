@@ -1,15 +1,15 @@
 import os
 import os.path
-import re
 import shutil
-import zipfile
 from typing import Callable
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
+from django_filters import rest_framework as filters
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -17,11 +17,13 @@ from rest_framework.response import Response
 from rest_framework.serializers import ValidationError
 
 from common.api import JMSBulkModelViewSet
+from common.drf.filters import BaseFilterSet
 from common.serializers import FileSerializer
 from common.utils import is_uuid
 from common.utils.http import is_true
 from terminal import serializers
 from terminal.models import AppletPublication, Applet
+from common.utils.zip import safe_extract_zip
 
 __all__ = ['AppletViewSet', 'AppletPublicationViewSet']
 
@@ -30,6 +32,13 @@ class DownloadUploadMixin:
     get_serializer: Callable
     request: Request
     get_object: Callable
+
+    @staticmethod
+    def cleanup_tmp_files(rel_path, extract_to):
+        if rel_path and default_storage.exists(rel_path):
+            default_storage.delete(rel_path)
+        if extract_to and os.path.exists(extract_to):
+            shutil.rmtree(extract_to)
 
     def extract_and_check_file(self, request):
         serializer = self.get_serializer(data=self.request.data)
@@ -47,38 +56,36 @@ class DownloadUploadMixin:
             shutil.rmtree(extract_to)
 
         try:
-            with zipfile.ZipFile(path) as zp:
-                if zp.testzip() is not None:
-                    raise ValidationError({'error': _('Invalid zip file')})
-                zp.extractall(extract_to)
+            safe_extract_zip(path, extract_to)
         except RuntimeError as e:
             raise ValidationError({'error': _('Invalid zip file') + ': {}'.format(e)})
 
-        tmp_dir = os.path.join(extract_to, file.name.replace('.zip', ''))
-        if not os.path.exists(tmp_dir):
-            name = file.name
-            name = re.match(r"(\w+)", name).group()
-            tmp_dir = os.path.join(extract_to, name)
+        tmp_dir = Applet.locate_pkg_root(extract_to, file.name)
 
         manifest = Applet.validate_pkg(tmp_dir)
-        return manifest, tmp_dir
+        return manifest, tmp_dir, rel_path, extract_to
 
     @action(detail=False, methods=['post'], serializer_class=FileSerializer)
     def upload(self, request, *args, **kwargs):
-        manifest, tmp_dir = self.extract_and_check_file(request)
-        name = manifest['name']
-        update = request.query_params.get('update')
+        rel_path = None
+        extract_to = None
+        try:
+            manifest, tmp_dir, rel_path, extract_to = self.extract_and_check_file(request)
+            name = manifest['name']
+            update = request.query_params.get('update')
 
-        is_enterprise = manifest.get('edition') == Applet.Edition.enterprise
-        if is_enterprise and not settings.XPACK_LICENSE_IS_VALID:
-            raise ValidationError({'error': _('This is enterprise edition applet')})
+            is_enterprise = manifest.get('edition') == Applet.Edition.enterprise
+            if is_enterprise and not settings.XPACK_LICENSE_IS_VALID:
+                raise ValidationError({'error': _('This is enterprise edition applet')})
 
-        instance = Applet.objects.filter(name=name).first()
-        if instance and not update:
-            return Response({'error': 'Applet already exists: {}'.format(name)}, status=400)
+            instance = Applet.objects.filter(name=name).first()
+            if instance and not update:
+                return Response({'error': 'Applet already exists: {}'.format(name)}, status=400)
 
-        applet, serializer = Applet.install_from_dir(tmp_dir, builtin=False)
-        return Response(serializer.data, status=201)
+            applet, serializer = Applet.install_from_dir(tmp_dir, builtin=False)
+            return Response(serializer.data, status=201)
+        finally:
+            self.cleanup_tmp_files(rel_path, extract_to)
 
     @action(detail=True, methods=['get'])
     def download(self, request, *args, **kwargs):
@@ -143,8 +150,24 @@ class AppletViewSet(DownloadUploadMixin, JMSBulkModelViewSet):
         instance.delete()
 
 
+class AppletPublicationFilterSet(BaseFilterSet):
+    host = filters.CharFilter(
+        method='filter_host', label=gettext_lazy('Host name, address or ID')
+    )
+
+    class Meta:
+        model = AppletPublication
+        fields = ['host', 'applet', 'status']
+
+    @staticmethod
+    def filter_host(queryset, name, value):
+        if is_uuid(value):
+            return queryset.filter(host_id=value)
+        return queryset.filter(Q(host__name=value) | Q(host__address=value))
+
+
 class AppletPublicationViewSet(viewsets.ModelViewSet):
     queryset = AppletPublication.objects.all()
     serializer_class = serializers.AppletPublicationSerializer
-    filterset_fields = ['host', 'applet', 'status']
-    search_fields = ['applet__name', 'applet__display_name', 'host__name']
+    filterset_class = AppletPublicationFilterSet
+    search_fields = ['applet__name', 'applet__display_name', 'host__name', 'host__address']

@@ -108,7 +108,9 @@ class CommandStorageViewSet(BaseStorageViewSetMixin, viewsets.ModelViewSet):
 
 
 class ReplayStorageFilterSet(BaseFilterSet):
-    type_not = drf_filters.CharFilter(field_name='type', exclude=True)
+    type_not = drf_filters.CharFilter(
+        field_name='type', exclude=True, label=_('Exclude type')
+    )
 
     class Meta:
         model = ReplayStorage
@@ -123,13 +125,29 @@ class ReplayStorageViewSet(BaseStorageViewSetMixin, viewsets.ModelViewSet):
 
 
 class BaseStorageTestConnectiveMixin:
+    error_keywords_map = [
+        ('authentication failed', _('Authentication failed')),
+        ('connection refused', _('Connection refused')),
+        ('timed out', _('Connection timeout')),
+        ('name or service not known', _('Unable to resolve the address')),
+        ('no route to host', _('Unable to connect to the host')),
+    ]
+
+    def get_test_failure_msg(self, error):
+        raw = str(error)
+        lower = raw.lower()
+        for keyword, message in self.error_keywords_map:
+            if keyword in lower:
+                return _("Test failure: {}").format(message)
+        return _("Test failure: {}").format(raw)
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         try:
             is_valid = instance.is_valid()
         except Exception as e:
             is_valid = False
-            msg = _("Test failure: {}".format(str(e)))
+            msg = self.get_test_failure_msg(e)
         else:
             if is_valid:
                 msg = _("Test successful")

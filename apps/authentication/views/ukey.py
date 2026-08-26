@@ -10,7 +10,7 @@ __all__ = ["UserUKeyView", "UserUKeyBindView"]
 
 
 class UserUKeyView(mixins.AuthMixin, FormView):
-    template_name = "authentication/login_ukey.html"
+    template_name = "authentication/login_ukey_verify.html"
     form_class = forms.UserUKeyForm
     redirect_field_name = "next"
 

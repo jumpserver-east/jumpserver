@@ -18,7 +18,7 @@ from common.const.crontab import CRONTAB_AT_AM_TWO
 from common.decorators import on_transaction_commit
 from common.sessions.cache import user_session_manager
 from common.signals import django_ready
-from common.utils import get_logger
+from common.utils import get_logger, text_hmac_sha256
 from jumpserver.utils import get_current_request
 from ops.celery.decorator import register_as_period_task
 from orgs.models import Organization
@@ -28,7 +28,7 @@ from rbac.const import Scope
 from rbac.models import RoleBinding
 from settings.signals import setting_changed
 from .models import User, UserPasswordHistory, UserGroup
-from .signals import post_user_create
+from .signals import post_user_create, post_user_update
 
 logger = get_logger(__file__)
 
@@ -78,21 +78,71 @@ def user_authenticated_handle(user, created, source, attrs=None, **kwargs):
         user.save()
 
 
+def set_user_email_lookup(user):
+    if user.email:
+        email_lookup = text_hmac_sha256(user.email)
+    else:
+        email_lookup = ''
+    if user.email_lookup == email_lookup:
+        return
+    logger.debug(f"Set user email_lookup: {email_lookup} for user: {user}")
+    user.email_lookup = email_lookup
+    user.save(update_fields=['email_lookup'])
+
+
+@receiver(post_user_create)
+@receiver(post_user_update)
+def save_user_email_lookup(sender, user, **kwargs):
+    set_user_email_lookup(user)
+
+
+@receiver(post_save, sender=User)
+def save_user_email_lookup(sender, instance, **kwargs):
+    set_user_email_lookup(instance)
+
+
+@on_transaction_commit
+def sync_jdmc_user_password(username, raw_password):
+    try:
+        from xpack.plugins.jdmc.utils import change_jdmc_user_password
+        change_jdmc_user_password(username, raw_password)
+    except Exception as e:
+        logger.error(
+            "Failed to change JDMC user password for %s: %s",
+            username, e
+        )
+
+
 @receiver(post_save, sender=User)
 def save_passwd_change(sender, instance: User, **kwargs):
-    if instance.source != User.Source.local.value or not instance.password:
+    if not getattr(instance, '_password_changed', False):
         return
 
-    passwords = UserPasswordHistory.objects \
-                    .filter(user=instance) \
-                    .order_by('-date_created') \
-                    .values_list('password', flat=True)[:settings.OLD_PASSWORD_HISTORY_LIMIT_COUNT]
+    raw_password = None
+    if hasattr(instance, '_jdmc_password_raw'):
+        raw_password = instance._jdmc_password_raw
+        delattr(instance, '_jdmc_password_raw')
 
-    if instance.password not in list(passwords):
-        UserPasswordHistory.objects.create(
-            user=instance, password=instance.password,
-            date_created=instance.date_password_last_updated
-        )
+    if instance.source != User.Source.local.value or not instance.password:
+        instance._password_changed = False
+        return
+
+    try:
+        passwords = UserPasswordHistory.objects \
+            .filter(user=instance) \
+            .order_by('-date_created') \
+            .values_list('password', flat=True)[:settings.OLD_PASSWORD_HISTORY_LIMIT_COUNT]
+
+        if instance.password not in list(passwords):
+            UserPasswordHistory.objects.create(
+                user=instance, password=instance.password,
+                date_created=instance.date_password_last_updated
+            )
+    finally:
+        instance._password_changed = False
+
+    if settings.XPACK_ENABLED and settings.JDMC_ENABLED and raw_password:
+        sync_jdmc_user_password(instance.username, raw_password)
 
 
 def update_role_superuser_if_need(user):
