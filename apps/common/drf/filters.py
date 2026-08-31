@@ -37,7 +37,6 @@ __all__ = [
     "CustomFilterBackend",
     "BaseFilterSet",
     "IDNotFilterBackend",
-    "NotOrRelFilterBackend",
     "LabelFilterBackend",
     "RewriteOrderingFilter",
     "AttrRulesFilterBackend",
@@ -95,7 +94,9 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
             ):
                 continue
             model_field_name = self.get_filterset_model_field(view, field_name)
-            if not self.is_text_lookup_field(model, model_field_name):
+            if not self.is_text_lookup_field(
+                model, model_field_name, queryset
+            ):
                 continue
 
             if lookup in self.dynamic_multi_text_lookups:
@@ -128,8 +129,8 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
                 queryset = queryset.distinct()
         return queryset
 
-    def is_text_lookup_field(self, model, field_path):
-        field = self.resolve_model_field(model, field_path)
+    def is_text_lookup_field(self, model, field_path, queryset=None):
+        field = self.resolve_model_field(model, field_path, queryset)
         return isinstance(field, (models.CharField, models.TextField))
 
     def filter_dynamic_value_lookups(self, request, queryset, view):
@@ -152,7 +153,9 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
             ):
                 continue
             model_field_name = self.get_filterset_model_field(view, field_name)
-            if not self.is_value_lookup_field(model, model_field_name):
+            if not self.is_value_lookup_field(
+                model, model_field_name, queryset
+            ):
                 continue
 
             if lookup == "exact":
@@ -196,8 +199,8 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
             return queryset.exclude(**kwargs)
         return queryset.filter(**kwargs)
 
-    def is_value_lookup_field(self, model, field_path):
-        field = self.resolve_model_field(model, field_path)
+    def is_value_lookup_field(self, model, field_path, queryset=None):
+        field = self.resolve_model_field(model, field_path, queryset)
         if field is None:
             return False
         return not getattr(field, "is_relation", False)
@@ -224,7 +227,9 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
                 model_field_name = self.get_filterset_model_field(
                     view, field_name
                 )
-                if not self.is_text_lookup_field(model, model_field_name):
+                if not self.is_text_lookup_field(
+                    model, model_field_name, queryset
+                ):
                     continue
                 for value in values:
                     if value == "":
@@ -244,7 +249,9 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
                 model_field_name = self.get_filterset_model_field(
                     view, field_name
                 )
-                if not self.is_value_lookup_field(model, model_field_name):
+                if not self.is_value_lookup_field(
+                    model, model_field_name, queryset
+                ):
                     continue
                 if lookup == "in":
                     cleaned_values = self.split_csv_values(values)
@@ -283,7 +290,17 @@ class LookupFilterBackend(drf_filters.DjangoFilterBackend):
             )
         return cleaned_values
 
-    def resolve_model_field(self, model, field_path):
+    def resolve_model_field(self, model, field_path, queryset=None):
+        filtered_relations = getattr(
+            getattr(queryset, 'query', None), '_filtered_relations', {}
+        )
+        relation_alias, separator, related_field = field_path.partition('__')
+        filtered_relation = filtered_relations.get(relation_alias)
+        if filtered_relation:
+            field_path = filtered_relation.relation_name
+            if separator:
+                field_path = f'{field_path}__{related_field}'
+
         current_model = model
         field = None
         field_names = field_path.split("__")
@@ -421,6 +438,27 @@ class SearchFilter(SearchFilterBase):
             default_params = request.query_params.getlist('search')
         groups.extend((params, False, True) for params in default_params)
         return groups
+
+    def must_call_distinct(self, queryset, search_fields):
+        filtered_relations = getattr(
+            getattr(queryset, 'query', None), '_filtered_relations', {}
+        )
+        if not filtered_relations:
+            return super().must_call_distinct(queryset, search_fields)
+
+        resolved_fields = []
+        for search_field in search_fields:
+            prefix = search_field[0] if search_field[0] in self.lookup_prefixes else ''
+            field_name = search_field[len(prefix):]
+            relation_alias, separator, related_field = field_name.partition('__')
+            filtered_relation = filtered_relations.get(relation_alias)
+            if filtered_relation:
+                field_name = filtered_relation.relation_name
+                if separator:
+                    field_name = f'{field_name}__{related_field}'
+            resolved_fields.append(f'{prefix}{field_name}')
+
+        return super().must_call_distinct(queryset, resolved_fields)
 
     @staticmethod
     def split_default_search_batches(params):
@@ -969,31 +1007,6 @@ class AttrRulesFilterBackend(filters.BaseFilterBackend):
 
         logger.debug("AttrRulesFilterBackend json_base64 data: %s", data)
         return data
-
-class NotOrRelFilterBackend(filters.BaseFilterBackend):
-    def get_schema_fields(self, view):
-        return [
-            coreapi.Field(
-                name="_rel",
-                location="query",
-                required=False,
-                type="string",
-                example="/api/v1/users/users?name=abc&username=def&_rel=union",
-                description="Filter by rel, or not, default is and",
-            )
-        ]
-
-    def filter_queryset(self, request, queryset, view):
-        _rel = request.query_params.get("_rel")
-        if not _rel or _rel not in ("or", "not"):
-            return queryset
-        if _rel == "not":
-            queryset.query.where.negated = True
-        elif _rel == "or":
-            queryset.query.where.connector = "OR"
-        queryset._result_cache = None
-        return queryset
-
 
 class RewriteOrderingFilter(OrderingFilter):
     default_ordering_if_has = ("name",)

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import time
 from urllib.parse import quote
 
 import requests
@@ -8,7 +9,7 @@ from common.utils import get_logger, random_string
 
 logger = get_logger(__name__)
 
-__all__ = ['OpenBaoKVClient']
+__all__ = ['OpenBaoAPIError', 'OpenBaoKVClient', 'OpenBaoSSHCAClient']
 
 
 class OpenBaoAPIError(Exception):
@@ -31,7 +32,13 @@ class OpenBaoKVClient(object):
         data = {'secret': 'secret'}
         try:
             self._check_health()
-            self.create(path, data)
+            try:
+                self.create(path, data)
+            except OpenBaoAPIError as e:
+                if getattr(e, 'status_code', None) != 404:
+                    raise
+                self.enable_secrets_engine()
+                self.create(path, data)
             self.get(path)
             self.patch(path, data)
             self.delete(path)
@@ -40,6 +47,96 @@ class OpenBaoKVClient(object):
             return False, f'OpenBao is not reachable: {e}'
         else:
             return True, ''
+
+    def enable_secrets_engine(self):
+        """Create the selected mount as a KV v2 engine when it does not exist."""
+        mount_point = quote(self.mount_point, safe='')
+        response = self._send(
+            'POST', f'/v1/sys/mounts/{mount_point}',
+            json={'type': 'kv', 'options': {'version': '2'}},
+        )
+        if response.status_code not in (200, 204):
+            error = self._build_error(response)
+            if response.status_code == 403:
+                error = OpenBaoAPIError(
+                    'The OpenBao token cannot create the requested mount point. '
+                    'Grant it create/update access to sys/mounts/*.'
+                )
+                error.status_code = response.status_code
+            raise error
+
+        # OpenBao 2.6 may briefly report that a newly enabled KV engine is being
+        # upgraded to v2. Wait for that transition before running the write test.
+        deadline = time.monotonic() + self.timeout
+        while True:
+            response = self._send(
+                'POST', f'/v1/{mount_point}/config',
+                json={'max_versions': self.max_versions},
+            )
+            if response.status_code in (200, 204):
+                return
+            if response.status_code != 400 or time.monotonic() >= deadline:
+                raise self._build_error(response)
+            time.sleep(0.2)
+
+    def iter_secret_paths(self, prefix=''):
+        """Yield all current secret paths below this KV v2 mount."""
+        try:
+            response = self._request(
+                'LIST', self._kv_path('metadata', prefix), expected_statuses=(200,)
+            )
+        except OpenBaoAPIError as e:
+            if getattr(e, 'status_code', None) == 404:
+                return
+            raise
+
+        for key in response.get('data', {}).get('keys', []):
+            path = f'{prefix}{key}'
+            if key.endswith('/'):
+                yield from self.iter_secret_paths(path)
+            else:
+                yield path
+
+    def copy_current_secrets_from(self, source):
+        """Copy current values and custom metadata from another KV v2 mount."""
+        if self.addr == source.addr and self.mount_point == source.mount_point:
+            return 0
+
+        copied = 0
+        for path in source.iter_secret_paths():
+            source_secret = source.get(path)
+            if 'data' not in source_secret:
+                continue
+
+            target_secret = self.get(path)
+            if 'data' in target_secret:
+                if target_secret['data'] != source_secret['data']:
+                    raise OpenBaoAPIError(
+                        f'The target mount already contains different data at {path}'
+                    )
+                continue
+
+            self.create(path, source_secret['data'])
+            metadata = source._request(
+                'GET', source._kv_path('metadata', path), expected_statuses=(200,)
+            ).get('data', {})
+            custom_metadata = metadata.get('custom_metadata') or {}
+            if custom_metadata:
+                self.update_metadata(path, custom_metadata)
+            copied += 1
+
+        # Verify again after copying so a concurrent source update aborts the
+        # settings change instead of silently switching to stale data.
+        for path in source.iter_secret_paths():
+            source_secret = source.get(path)
+            if 'data' not in source_secret:
+                continue
+            target_secret = self.get(path)
+            if target_secret.get('data') != source_secret['data']:
+                raise OpenBaoAPIError(
+                    f'Vault data changed while migrating mount point at {path}'
+                )
+        return copied
 
     def get(self, path, version=None):
         params = {'version': version} if version else None
@@ -164,3 +261,75 @@ class OpenBaoKVClient(object):
         error = OpenBaoAPIError(errors or response.reason)
         error.status_code = response.status_code
         return error
+
+
+class OpenBaoSSHCAClient(OpenBaoKVClient):
+    """Small client for OpenBao's SSH certificate signing endpoint.
+
+    It intentionally shares only the HTTP transport with the KV client. SSH CA
+    settings and credentials are kept separate from the account Vault backend.
+    """
+
+    def __init__(
+            self, addr=None, token='', mount_point='ssh-client-signer',
+            role='jumpserver', timeout=10, verify_tls=True,
+    ):
+        super().__init__(
+            addr=addr,
+            token=token,
+            mount_point=mount_point,
+            timeout=timeout,
+            verify_tls=verify_tls,
+        )
+        self.role = (role or 'jumpserver').strip('/')
+
+    def is_active(self):
+        try:
+            self._check_health()
+            public_key = self.get_public_key()
+            if not public_key:
+                raise OpenBaoAPIError('OpenBao SSH CA public key is empty')
+        except Exception as e:
+            logger.error(str(e))
+            return False, f'OpenBao SSH CA is not available: {e}'
+        return True, ''
+
+    def get_public_key(self):
+        mount_point = quote(self.mount_point, safe='')
+        response = self._send('GET', f'/v1/{mount_point}/public_key')
+        if response.status_code != 200:
+            raise self._build_error(response)
+        return response.text.strip()
+
+    def sign(
+            self, public_key, valid_principals, ttl,
+            key_id='', extensions=None, critical_options=None,
+    ):
+        mount_point = quote(self.mount_point, safe='')
+        role = quote(self.role, safe='')
+        payload = {
+            'public_key': public_key,
+            'cert_type': 'user',
+            'valid_principals': valid_principals,
+            'ttl': f'{int(ttl)}s',
+        }
+        if key_id:
+            payload['key_id'] = key_id
+        if extensions:
+            payload['extensions'] = extensions
+        if critical_options:
+            payload['critical_options'] = critical_options
+
+        response = self._request(
+            'POST', f'/v1/{mount_point}/sign/{role}',
+            json=payload, expected_statuses=(200,)
+        )
+        data = response.get('data') or {}
+        signed_key = data.get('signed_key')
+        if not signed_key:
+            raise OpenBaoAPIError('OpenBao response does not contain signed_key')
+        return {
+            'signed_key': signed_key.strip(),
+            'serial_number': data.get('serial_number', ''),
+            'lease_duration': response.get('lease_duration') or int(ttl),
+        }

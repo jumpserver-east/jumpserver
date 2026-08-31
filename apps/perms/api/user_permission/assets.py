@@ -1,6 +1,8 @@
 import abc
 
 from django.conf import settings
+from django.db.models import F, FilteredRelation, Q, Value
+from django.db.models.functions import Coalesce, NullIf
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 
 from assets.models import Asset, Node, MyAsset
@@ -41,7 +43,10 @@ class UserPermedAssetRetrieveApi(SelfOrPKUserMixin, RetrieveAPIView):
 
 class BaseUserPermedAssetsApi(SelfOrPKUserMixin, ExtraFilterFieldsMixin, ListAPIView):
     ordering = []
-    search_fields = ('name', 'address', 'comment')
+    search_fields = (
+        'name', 'address', 'comment',
+        'user_custom__name', 'user_custom__comment',
+    )
     ordering_fields = ("name", "address", "connectivity", "date_updated")
     filterset_class = PermedAssetFilterSet
     serializer_class = serializers.AssetPermedSerializer
@@ -52,14 +57,38 @@ class BaseUserPermedAssetsApi(SelfOrPKUserMixin, ExtraFilterFieldsMixin, ListAPI
         if settings.ASSET_SIZE == 'small':
             self.ordering = ['name']
         assets = self.get_assets()
+        custom_user_id = self.user.id if self.need_custom_value_user else None
+        assets = assets.alias(
+            user_custom=FilteredRelation(
+                'my_assets',
+                condition=Q(my_assets__user_id=custom_user_id),
+            )
+        )
         assets = self.serializer_class.setup_eager_loading(assets)
         return assets
 
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        ordering = self.request.query_params.get('order')
+        if not self.need_custom_value_user or ordering not in ('name', '-name'):
+            return queryset
+        prefix = '-' if ordering.startswith('-') else ''
+        queryset = queryset.alias(
+            display_name=Coalesce(
+                NullIf(F('user_custom__name'), Value('')),
+                F('name'),
+            )
+        )
+        return queryset.order_by(f'{prefix}display_name')
+
     def get_serializer(self, *args, **kwargs):
-        need_custom_value_user = self.request_user_is_self() or self.request.user.is_service_account
-        if len(args) == 1 and kwargs.get('many', False) and need_custom_value_user:
+        if len(args) == 1 and kwargs.get('many', False) and self.need_custom_value_user:
             MyAsset.set_asset_custom_value(args[0], self.user)
         return super().get_serializer(*args, **kwargs)
+
+    @lazyproperty
+    def need_custom_value_user(self):
+        return self.request_user_is_self() or self.request.user.is_service_account
 
     @abc.abstractmethod
     def get_assets(self):

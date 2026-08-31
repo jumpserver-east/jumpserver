@@ -17,10 +17,28 @@ class VaultUnavailableException(VaultException):
     default_code = 'vault_unavailable'
 
 
+class VaultAccountSyncUnavailableException(VaultException):
+    """Vault is unavailable while synchronizing an account template."""
+
+    default_code = 'vault_account_sync_unavailable'
+    default_detail = _(
+        'Vault service is unavailable. Unable to synchronize accounts. '
+        'Please contact your administrator to check the Vault configuration.'
+    )
+
+
 class VaultSecretNotFoundException(VaultException):
     """The Vault entry or its secret field does not exist."""
 
     default_code = 'vault_secret_not_found'
     default_detail = _(
         'Secret not found in Vault. The local sync marker has been preserved.'
+    )
+
+
+class SSHCertificateSigningException(JMSException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_code = 'ssh_certificate_signing_unavailable'
+    default_detail = _(
+        'SSH certificate signing is unavailable. Please retry or contact your administrator.'
     )

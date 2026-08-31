@@ -7,12 +7,18 @@ from ..models import Asset, Node
 
 __all__ = [
     'NodeSerializer', "NodeAddChildrenSerializer",
-    "NodeAssetsSerializer", "NodeTaskSerializer",
+    "NodeAssetsSerializer", "NodeAssetsAmountQuerySerializer",
+    "NodeAssetTreeSearchQuerySerializer", "NodeTreeMetricsQuerySerializer",
+    "NodeTreeAssetsLimitQuerySerializer", "NodeTreeAssetsOrderQuerySerializer",
+    "NodeTaskSerializer",
 ]
 
 
 class NodeSerializer(BulkOrgResourceModelSerializer):
     name = serializers.ReadOnlyField(source='value')
+    assets_amount = serializers.SerializerMethodField(
+        label=_("Assets amount")
+    )
     value = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, label=_("value")
     )
@@ -23,8 +29,22 @@ class NodeSerializer(BulkOrgResourceModelSerializer):
     class Meta:
         model = Node
         only_fields = ['id', 'key', 'value', 'org_id']
-        fields = only_fields + ['name', 'full_value']
+        fields = only_fields + ['name', 'full_value', 'assets_amount']
         read_only_fields = ['key', 'org_id']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        if request and request.method != 'GET':
+            fields.pop('assets_amount', None)
+        return fields
+
+    @staticmethod
+    def get_assets_amount(obj):
+        amount = getattr(obj, 'assets_amount_realtime', None)
+        if amount is not None:
+            return amount
+        return obj.get_assets_amount()
 
     def validate_value(self, data):
         if '/' in data:
@@ -65,6 +85,89 @@ class NodeAssetsSerializer(BulkOrgResourceModelSerializer):
     class Meta:
         model = Node
         fields = ['assets']
+
+
+class NodeAssetsAmountQuerySerializer(serializers.Serializer):
+    node_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=False,
+        max_length=200,
+    )
+    include_descendants = serializers.BooleanField(
+        default=True,
+        required=False,
+    )
+    fresh = serializers.BooleanField(default=False, required=False)
+
+    @staticmethod
+    def validate_node_ids(node_ids):
+        # Preserve the requested order while preventing duplicate correlated
+        # subqueries inside the same batch.
+        return list(dict.fromkeys(node_ids))
+
+
+class NodeAssetTreeSearchQuerySerializer(serializers.Serializer):
+    ASSET_LIMIT = 100
+
+    search = serializers.CharField(max_length=256, trim_whitespace=True)
+    target = serializers.ChoiceField(
+        choices=('all', 'node', 'asset'), default='asset', required=False
+    )
+    include_ancestors = serializers.BooleanField(default=True, required=False)
+    limit = serializers.IntegerField(
+        min_value=1, max_value=1000, default=1000, required=False
+    )
+
+    def validate(self, attrs):
+        if attrs['target'] == 'asset':
+            attrs['limit'] = min(attrs['limit'], self.ASSET_LIMIT)
+        return attrs
+
+
+class NodeTreeAssetsLimitQuerySerializer(serializers.Serializer):
+    assets_limit = serializers.IntegerField(min_value=1, max_value=1000)
+
+
+class NodeTreeAssetsOrderQuerySerializer(serializers.Serializer):
+    asset_order = serializers.ChoiceField(
+        choices=('name', 'address'), default='name', required=False
+    )
+
+
+class TreeMetricItemSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=('node', 'asset'))
+    id = serializers.UUIDField()
+
+
+class NodeTreeMetricsQuerySerializer(serializers.Serializer):
+    METRIC_CHOICES = ('asset_all', 'asset_direct', 'search_assets')
+
+    items = TreeMetricItemSerializer(
+        many=True, allow_empty=False, max_length=200
+    )
+    metric = serializers.ChoiceField(choices=METRIC_CHOICES)
+    search = serializers.CharField(
+        required=False, allow_blank=True, max_length=256,
+        trim_whitespace=True,
+    )
+    fresh = serializers.BooleanField(default=False, required=False)
+
+    def validate(self, attrs):
+        if attrs['metric'] == 'search_assets' and not attrs.get('search'):
+            raise serializers.ValidationError({
+                'search': _('This field may not be blank.'),
+            })
+
+        seen = set()
+        items = []
+        for item in attrs['items']:
+            identity = (item['type'], item['id'])
+            if identity in seen:
+                continue
+            seen.add(identity)
+            items.append(item)
+        attrs['items'] = items
+        return attrs
 
 
 class NodeAddChildrenSerializer(serializers.Serializer):

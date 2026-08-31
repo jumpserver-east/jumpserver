@@ -1,10 +1,28 @@
 from typing import List
 
 from rest_framework.request import Request
+from rest_framework.response import Response
 
 from assets.models import Node, Platform, Protocol, MyAsset
-from assets.utils import get_node_from_request, is_query_node_all_assets
+from assets.utils import (
+    attach_nodes_realtime_assets_amount, get_node_from_request,
+    is_query_node_all_assets,
+)
 from common.utils import lazyproperty, timeit
+
+
+class NodeAssetsAmountListMixin:
+    """Attach exact subtree asset amounts after filtering and pagination."""
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        nodes = page if page is not None else queryset
+        nodes = attach_nodes_realtime_assets_amount(nodes)
+        serializer = self.get_serializer(nodes, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 
 class SerializeToTreeNodeMixin:
@@ -22,7 +40,10 @@ class SerializeToTreeNodeMixin:
     def serialize_nodes(self, nodes: List[Node], with_asset_amount=False):
         if with_asset_amount:
             def _name(node: Node):
-                return '{} ({})'.format(node.value, node.assets_amount)
+                amount = getattr(
+                    node, 'assets_amount_realtime', node.assets_amount
+                )
+                return '{} ({})'.format(node.value, amount)
         else:
             def _name(node: Node):
                 return node.value
@@ -36,19 +57,26 @@ class SerializeToTreeNodeMixin:
             else:
                 return False
 
+        def _has_children(node):
+            # Callers that have not opted into the annotation keep the
+            # previous lazy-tree behaviour.
+            return bool(getattr(node, 'has_children', True))
+
         data = [
             {
                 'id': node.key,
                 'name': _name(node),
                 'title': _name(node),
                 'pId': node.parent_key,
-                'isParent': True,
+                'isParent': _has_children(node),
+                'hasChildren': _has_children(node),
                 'open': _open(node),
                 'meta': {
                     'data': {
                         "id": node.id,
                         "key": node.key,
                         "value": node.value,
+                        "has_children": _has_children(node),
                     },
                     'type': 'node'
                 }
@@ -56,6 +84,27 @@ class SerializeToTreeNodeMixin:
             for node in nodes
         ]
         return data
+
+    @timeit
+    def serialize_compact_nodes(self, rows):
+        """Serialize the minimal node shape consumed by XTree."""
+        rows = list(rows)
+        parent_keys = {
+            parent_key for _, _, _, parent_key in rows if parent_key
+        }
+        return [
+            {
+                'id': key,
+                'name': value,
+                'pId': parent_key,
+                'hasChildren': key in parent_keys,
+                'meta': {
+                    'type': 'node',
+                    'data': {'id': node_id},
+                },
+            }
+            for node_id, key, value, parent_key in rows
+        ]
 
     @lazyproperty
     def support_types(self):
@@ -87,7 +136,7 @@ class SerializeToTreeNodeMixin:
                 continue
             # 根节点最多显示 1000 个资产
             if pid.isdigit():
-                if root_assets_count > 1000:
+                if root_assets_count >= 1000:
                     continue
                 root_assets_count += 1
             data.append({

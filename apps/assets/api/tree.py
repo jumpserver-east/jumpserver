@@ -11,20 +11,27 @@ from common.tree import TreeNodeSerializer
 from common.utils import get_logger
 from orgs.mixins import generics
 from orgs.utils import current_org
-from .mixin import SerializeToTreeNodeMixin
+from .mixin import NodeAssetsAmountListMixin, SerializeToTreeNodeMixin
 from .. import serializers
 from ..const import AllTypes
 from ..models import Node, Platform, Asset
+from ..utils import (
+    attach_nodes_realtime_assets_amount, get_asset_tree_metrics,
+    search_node_asset_tree,
+)
 
 logger = get_logger(__file__)
 __all__ = [
     'NodeChildrenApi',
     'NodeChildrenAsTreeApi',
+    'NodeAssetsAmountApi',
+    'NodeAssetTreeSearchApi',
+    'NodeTreeMetricsApi',
     'CategoryTreeApi',
 ]
 
 
-class NodeChildrenApi(generics.ListCreateAPIView):
+class NodeChildrenApi(NodeAssetsAmountListMixin, generics.ListCreateAPIView):
     """
     节点的增删改查
     """
@@ -77,7 +84,7 @@ class NodeChildrenApi(generics.ListCreateAPIView):
         else:
             return Node.org_root_nodes()
 
-    def get_queryset(self):
+    def get_base_queryset(self):
         query_all = self.request.query_params.get("all", "0") == "all"
 
         if self.is_initial and current_org.is_root():
@@ -97,6 +104,9 @@ class NodeChildrenApi(generics.ListCreateAPIView):
             queryset = self.instance.get_children(with_self=with_self)
         return queryset
 
+    def get_queryset(self):
+        return self.get_base_queryset()
+
 
 class NodeChildrenAsTreeApi(SerializeToTreeNodeMixin, NodeChildrenApi):
     """
@@ -113,6 +123,23 @@ class NodeChildrenAsTreeApi(SerializeToTreeNodeMixin, NodeChildrenApi):
     """
     model = Node
 
+    def get_assets_limit(self):
+        raw_limit = self.request.query_params.get('assets_limit')
+        if raw_limit is None:
+            return None
+        serializer = serializers.NodeTreeAssetsLimitQuerySerializer(data={
+            'assets_limit': raw_limit,
+        })
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data['assets_limit']
+
+    def get_assets_order(self):
+        serializer = serializers.NodeTreeAssetsOrderQuerySerializer(data={
+            'asset_order': self.request.query_params.get('asset_order', 'name'),
+        })
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data['asset_order']
+
     def filter_queryset(self, queryset):
         """ queryset is Node queryset """
         if not self.request.GET.get('search'):
@@ -126,7 +153,11 @@ class NodeChildrenAsTreeApi(SerializeToTreeNodeMixin, NodeChildrenApi):
         include_assets = self.request.query_params.get('assets', '0') == '1'
         if not self.instance or not include_assets:
             return Asset.objects.none()
-        if not self.request.GET.get('search') and self.instance.is_org_root():
+        has_assets_limit = 'assets_limit' in self.request.query_params
+        if (
+                not self.request.GET.get('search') and
+                self.instance.is_org_root() and not has_assets_limit
+        ):
             return Asset.objects.none()
         if query_all:
             assets = self.instance.get_all_assets()
@@ -145,14 +176,144 @@ class NodeChildrenAsTreeApi(SerializeToTreeNodeMixin, NodeChildrenApi):
         return assets
 
     def list(self, request, *args, **kwargs):
-        nodes = self.filter_queryset(self.get_queryset()).order_by('value')
+        include_assets = request.query_params.get('assets', '0') == '1'
         with_asset_amount = request.query_params.get('asset_amount', '1') == '1'
+        query_all = request.query_params.get('all', '0') == 'all'
+        compact = request.query_params.get('compact', '0') == '1'
+        assets_limit = self.get_assets_limit()
+        assets_order = self.get_assets_order()
+
+        nodes = self.filter_queryset(self.get_base_queryset())
+        nodes = nodes.order_by('value')
+
+        if (
+                compact and query_all and not include_assets and
+                not with_asset_amount and assets_limit is None
+        ):
+            rows = nodes.values_list('id', 'key', 'value', 'parent_key')
+            return Response(data=self.serialize_compact_nodes(rows))
+
+        nodes = nodes.only(
+            'id', 'key', 'value', 'parent_key', 'org_id', 'assets_amount'
+        )
+
+        if query_all and not include_assets:
+            # The complete response already contains every descendant. Derive
+            # leaf state in linear time and avoid one EXISTS subquery per node.
+            nodes = list(nodes)
+            parent_keys = {node.parent_key for node in nodes if node.parent_key}
+            for node in nodes:
+                node.has_children = node.key in parent_keys
+        else:
+            nodes = list(nodes.with_has_children(include_assets=include_assets))
+
+        if with_asset_amount:
+            nodes = attach_nodes_realtime_assets_amount(nodes)
+
         nodes = self.serialize_nodes(nodes, with_asset_amount=with_asset_amount)
         assets = self.filter_queryset_for_assets(self.get_queryset_for_assets())
+        assets_truncated = False
+        if assets_limit is not None:
+            order_fields = (
+                ('address', 'name', 'id')
+                if assets_order == 'address'
+                else ('name', 'address', 'id')
+            )
+            assets = assets.order_by(*order_fields)
+            assets = list(assets[:assets_limit + 1])
+            assets_truncated = len(assets) > assets_limit
+            assets = assets[:assets_limit]
         node_key = self.instance.key if self.instance else None
         assets = self.serialize_assets(assets, node_key=node_key)
         data = [*nodes, *assets]
+        if assets_limit is not None:
+            return Response({
+                'results': data,
+                'assets_truncated': assets_truncated,
+                'assets_limit': assets_limit,
+            })
         return Response(data=data)
+
+
+class NodeAssetsAmountApi(generics.CreateAPIView):
+    """Return exact direct or subtree asset counts for a bounded node batch."""
+
+    serializer_class = serializers.NodeAssetsAmountQuerySerializer
+    rbac_perms = {
+        'POST': 'assets.view_node',
+    }
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        node_ids = serializer.validated_data['node_ids']
+        include_descendants = serializer.validated_data['include_descendants']
+        fresh = serializer.validated_data['fresh']
+
+        nodes = attach_nodes_realtime_assets_amount(
+            Node.objects.filter(id__in=node_ids).only('id', 'key', 'org_id'),
+            include_descendants=include_descendants,
+            fresh=fresh,
+        )
+        nodes_by_id = {str(node.id): node for node in nodes}
+        results = []
+        for node_id in node_ids:
+            node = nodes_by_id.get(str(node_id))
+            if not node:
+                continue
+            results.append({
+                'id': str(node.id),
+                'key': node.key,
+                'assets_amount': node.assets_amount_realtime,
+            })
+        return Response({'results': results})
+
+
+class NodeAssetTreeSearchApi(generics.ListAPIView):
+    """Search nodes or assets and return the paths required by a tree."""
+
+    model = Node
+    serializer_class = serializers.NodeAssetTreeSearchQuerySerializer
+    rbac_perms = {
+        'GET': 'assets.view_asset',
+    }
+
+    def get(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        result = search_node_asset_tree(
+            include_ancestors=data['include_ancestors'],
+            search=data['search'],
+            target=data['target'],
+            limit=data['limit'],
+        )
+        return Response(result)
+
+
+class NodeTreeMetricsApi(generics.CreateAPIView):
+    """Return asset metrics for a bounded visible node/asset batch."""
+
+    model = Node
+    serializer_class = serializers.NodeTreeMetricsQuerySerializer
+    rbac_perms = {
+        'POST': 'assets.view_asset',
+    }
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        results = get_asset_tree_metrics(
+            items=data['items'],
+            metric=data['metric'],
+            search=data.get('search'),
+            fresh=data['fresh'],
+        )
+        return Response({
+            'metric': data['metric'],
+            'results': results,
+        })
 
 
 class CategoryTreeApi(SerializeToTreeNodeMixin, generics.ListAPIView):

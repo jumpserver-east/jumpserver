@@ -208,7 +208,9 @@ class CheckAccountManager(BaseManager):
                 engine_names.append(engine)
 
         if not engine_names:
-            raise ValueError('No supported account security check selected')
+            raise ValueError(_(
+                'No supported account security check selected'
+            ))
         return engine_names
 
     def init_handlers(self, engine_names):
@@ -259,9 +261,13 @@ class CheckAccountManager(BaseManager):
         self.summary[risk] += 1
         if len(self.result[risk]) >= self.result_limit:
             return
+        asset_label = str(account.asset)
+        address = account.asset.address
+        if address and str(address) not in asset_label:
+            asset_label = f'{asset_label}[{address}]'
         self.result[risk].append({
             'asset_id': str(account.asset_id),
-            'asset': str(account.asset),
+            'asset': asset_label,
             'username': account.username,
         })
 
@@ -393,7 +399,9 @@ class CheckAccountManager(BaseManager):
             'account-risk-check:{}'.format(self.execution.org_id)
         )
         if not lock.acquire(blocking=False):
-            raise RuntimeError('Another account risk check is already running')
+            raise RuntimeError(_(
+                'Another account risk check is already running'
+            ))
 
         try:
             self.run_checks()
@@ -460,7 +468,11 @@ class CheckAccountManager(BaseManager):
         weak = self.summary[RiskChoice.weak_password]
         leaked = self.summary[RiskChoice.leaked_password]
         repeated = self.summary[RiskChoice.repeated_password]
-        self.print_log(_("Task execution completed"), 'success')
+        execution_failed = self.status in (Status.failed, Status.error)
+        self.print_log(
+            _("Task execution completed"),
+            'error' if execution_failed else 'success',
+        )
         self.print_log(_(
             "Checked %(total)s accounts: %(normal)s normal, %(risk)s at risk, "
             "%(no_secret)s without secrets"
