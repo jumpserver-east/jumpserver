@@ -293,6 +293,18 @@ if DB_USE_SSL:
             'sslrootcert': DB_CA_PATH,
         })
 
+# 专用于读取「跨地域主主库尚未同步到本地」的 ConnectionToken 的连接。
+# default 连接因 ATOMIC_REQUESTS=True + REPEATABLE READ，快照在请求首条 SELECT 时即冻结，
+# 之后在同一请求内重试再查也看不到复制中间件后写入的新行；这条连接 ATOMIC_REQUESTS=False
+# (autocommit) + READ COMMITTED，使每次 SELECT 都能读到最新已提交数据，供换 secret 时重试用。
+DATABASES['connection_token_fresh'] = {
+    **DATABASES['default'],
+    'ATOMIC_REQUESTS': False,
+    'TEST': {'MIRROR': 'default'},  # 测试时不额外建库，视为 default 同库
+}
+if DB_ENGINE in ('mysql', 'postgresql'):
+    DATABASES['connection_token_fresh']['OPTIONS'] = {**DB_OPTIONS, 'isolation_level': 'read committed'}
+
 # Password validation
 # https://docs.djangoproject.com/en/1.10/ref/settings/#auth-password-validators
 #
