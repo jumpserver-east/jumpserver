@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 import urllib.parse
 from struct import pack
 
@@ -8,7 +9,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -23,7 +24,7 @@ from accounts.utils import validate_account_username
 from acls.notifications import AssetLoginReminderMsg
 from common.api import JMSModelViewSet
 from common.exceptions import JMSException
-from common.utils import random_string, get_logger, get_request_ip_or_data
+from common.utils import random_string, get_logger, get_request_ip_or_data, is_uuid
 from common.utils.django import get_request_os
 from common.utils.http import is_true, is_false
 from orgs.mixins.api import RootOrgViewMixin
@@ -827,9 +828,32 @@ class SuperConnectionTokenViewSet(ConnectionTokenViewSet):
             raise PermissionDenied('Not allow to view secret')
 
         token_id = request.data.get('id') or ''
-        token = ConnectionToken.get_typed_connection_token(token_id)
-        if not token:
-            raise PermissionDenied('Token {} is not valid'.format(token))
+        if not is_uuid(token_id):
+            # 非法 id，保持 v3 原有 404 行为（原 get_object_or_404 对非法 pk 也是 404）
+            raise Http404('No ConnectionToken matches the given query.')
+
+        # 跨地域主主库为秒级异步复制：建 token 与换 secret 可能落在不同库，
+        # 目标库尚未同步到该行时会 404。此处对「行不存在」做有界退避重试，等复制追上；
+        # 读走独立 autocommit/READ-COMMITTED 连接(connection_token_fresh)，
+        # 否则本请求事务 ATOMIC_REQUESTS + REPEATABLE READ 的旧快照会让重试失效。
+        retries = getattr(settings, 'CONNECTION_TOKEN_SECRET_MISS_RETRIES', 5)
+        interval = getattr(settings, 'CONNECTION_TOKEN_SECRET_MISS_RETRY_INTERVAL', 0.3)
+        max_interval = getattr(settings, 'CONNECTION_TOKEN_SECRET_MISS_RETRY_MAX_INTERVAL', 1.0)
+        token = None
+        for i in range(retries + 1):
+            token = ConnectionToken.objects.using('connection_token_fresh').filter(pk=token_id).first()
+            if token is not None:
+                break
+            if i < retries:
+                logger.warning(
+                    'ConnectionToken %s not found, maybe cross-region replication lag, '
+                    'retry %s/%s after %ss', token_id, i + 1, retries, interval
+                )
+                time.sleep(interval)
+                interval = min(interval * 2, max_interval)
+        if token is None:
+            # 等满仍无此行，复原本来的 Http404，响应体仍是 object_does_not_exist
+            raise Http404('No ConnectionToken matches the given query.')
         token.is_valid()
         serializer = self.get_serializer(instance=token)
 
