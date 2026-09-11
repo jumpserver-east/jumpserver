@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -63,7 +64,8 @@ class SyncVersionBranchesTests(unittest.TestCase):
 
     def test_only_release_branches_are_created_and_source_is_unchanged(self):
         accepted = ['v4.10.14-lts', 'v3.10.23-lts', 'v3.10.0-7-lts', 'v5.0.0']
-        ignored = ['dev', 'main', 'master', 'docker-build', 'v3', 'v4', 'v5',
+        ignored = ['main', 'master', 'docker-build', 'v6', 'dev-test', 'dev/feature',
+                   'v3-test', 'v4-test', 'v5-test',
                    'v4.10', 'v3.10.21-lts-hthx', 'v4.10.14-lts.patch',
                    'pr@v4.10.14-lts', 'feature/v4.10.14-lts', 'v4.10.14-rc1']
         for branch in accepted + ignored:
@@ -80,7 +82,7 @@ class SyncVersionBranchesTests(unittest.TestCase):
         self.assertEqual(self.refs(self.upstream), before_source)
         result, summary = self.sync('false')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Create: 0; update: 0; unchanged: 4;', summary)
+        self.assertIn('Create: 0; update: 0; mirror: 0; unchanged: 4;', summary)
 
     def test_fast_forward_divergence_ahead_and_origin_only_branches(self):
         newer = self.commit('upstream change')
@@ -100,26 +102,97 @@ class SyncVersionBranchesTests(unittest.TestCase):
         origin_before['refs/heads/v4.10.14-lts'] = newer
         self.assertEqual(self.refs(self.origin), origin_before)
         self.assertEqual(self.refs(self.upstream), source_before)
-        self.assertIn('update: 1; unchanged: 1; skipped: 2;', summary)
+        self.assertIn('update: 1; mirror: 0; unchanged: 1; skipped: 2;', summary)
+
+    def test_development_branches_mirror_upstream_and_discard_origin_commits(self):
+        newer = self.commit('upstream change')
+        fork_change = self.commit('fork change', self.base)
+        for branch, source, dest in [
+            ('dev', newer, fork_change),  # Diverged histories.
+            ('v3', self.base, fork_change),  # Roll back origin-only commits.
+            ('v4', newer, self.base),  # Fast-forward origin.
+            ('v5', newer, None),  # Create a missing branch.
+        ]:
+            self.branch(self.upstream, branch, source)
+            if dest:
+                self.branch(self.origin, branch, dest)
+        # Similar names and the workflow branch must not be mirrored.
+        for branch in ('docker-build', 'main', 'v6', 'dev-test'):
+            self.branch(self.upstream, branch, newer)
+            self.branch(self.origin, branch, self.base)
+        source_before = self.refs(self.upstream)
+        expected = self.refs(self.origin)
+        expected.update({f'refs/heads/{b}': sha for b, sha in
+                         [('dev', newer), ('v3', self.base), ('v4', newer), ('v5', newer)]})
+        result, summary = self.sync('false')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.refs(self.origin), expected)
+        self.assertEqual(self.refs(self.upstream), source_before)
+        self.assertIn('Create: 1; update: 0; mirror: 3;', summary)
+        result, summary = self.sync('false')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Create: 0; update: 0; mirror: 0; unchanged: 4;', summary)
+
+    def test_development_mirror_lease_rejects_concurrent_updates_and_creation(self):
+        newer = self.commit('upstream change')
+        concurrent = self.commit('concurrent origin change', self.base)
+        self.branch(self.origin, 'dev', self.base)
+        self.branch(self.origin, 'concurrent-change', concurrent)
+        for branch in ('dev', 'v5'):
+            self.branch(self.upstream, branch, newer)
+        # Change the remote after its snapshot is read, before push advertises refs.
+        # This exercises real --force-with-lease rejection for existing and new heads.
+        hook = self.work / '.git' / 'hooks' / 'reference-transaction'
+        hook.write_text(
+            '#!/bin/sh\n'
+            '[ "$1" = committed ] || exit 0\n'
+            'while read -r old new ref; do\n'
+            '  case "$ref" in\n'
+            '    refs/remotes/version-sync/dev|refs/remotes/version-sync/v5)\n'
+            '      branch="${ref#refs/remotes/version-sync/}"\n'
+            f'      git --git-dir={shlex.quote(str(self.origin))} '
+            f'update-ref "refs/heads/$branch" {concurrent}\n'
+            '      ;;\n'
+            '  esac\n'
+            'done\n'
+        )
+        hook.chmod(0o755)
+        source_before = self.refs(self.upstream)
+        result, summary = self.sync('false')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('failed: 2;', summary)
+        for branch in ('dev', 'v5'):
+            self.assertEqual(self.refs(self.origin)[f'refs/heads/{branch}'], concurrent)
+        self.assertEqual(self.refs(self.upstream), source_before)
 
     def test_dry_run_previews_creation_and_update_without_writing_remotes(self):
         newer = self.commit('upstream change')
         self.branch(self.upstream, 'v4.10.14-lts', newer)
         self.branch(self.upstream, 'v3.10.23-lts', newer)
         self.branch(self.origin, 'v4.10.14-lts', self.base)
+        fork_change = self.commit('fork change', self.base)
+        self.branch(self.upstream, 'dev', newer)
+        self.branch(self.origin, 'dev', fork_change)
+        self.branch(self.upstream, 'v3', self.base)
+        self.branch(self.origin, 'v3', fork_change)
+        self.branch(self.upstream, 'v5', newer)
         before_source, before_dest = self.refs(self.upstream), self.refs(self.origin)
         result, summary = self.sync()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Would Create', summary)
         self.assertIn('Would Update', summary)
+        self.assertIn('Would Mirror upstream (discard origin-only commits)', summary)
+        self.assertIn('mirror: 2;', summary)
         self.assertEqual(self.refs(self.upstream), before_source)
         self.assertEqual(self.refs(self.origin), before_dest)
 
-    def test_empty_or_non_version_source_is_a_noop(self):
+    def test_empty_or_unmatched_source_preserves_origin_only_branches(self):
+        self.branch(self.origin, 'dev', self.base)
+        self.branch(self.origin, 'v5', self.base)
         before = self.refs(self.origin)
-        for with_dev in (False, True):
-            if with_dev:
-                self.branch(self.upstream, 'dev', self.base)
+        for with_main in (False, True):
+            if with_main:
+                self.branch(self.upstream, 'main', self.base)
             result, summary = self.sync('false')
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('Create: 0; update: 0;', summary)

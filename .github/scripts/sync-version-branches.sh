@@ -26,7 +26,7 @@ report() {
 upstream_heads="$(git ls-remote --heads "$UPSTREAM_URL")"
 git fetch --quiet --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
 
-report '### Upstream version branch synchronization'
+report '### Upstream branch synchronization'
 report "Dry run: $DRY_RUN"
 report ''
 report '| Branch | Result |'
@@ -34,6 +34,7 @@ report '| --- | --- |'
 
 created=0
 updated=0
+mirrored=0
 unchanged=0
 diverged=0
 failed=0
@@ -41,7 +42,11 @@ ignored=0
 while read -r upstream_sha source_ref; do
   [[ -n "$source_ref" ]] || continue
   branch="${source_ref#refs/heads/}"
-  if [[ ! "$branch" =~ $version_pattern ]]; then
+  mirror_branch=false
+  case "$branch" in
+    dev|v3|v4|v5) mirror_branch=true ;;
+  esac
+  if [[ "$mirror_branch" == false && ! "$branch" =~ $version_pattern ]]; then
     ignored=$((ignored + 1))
     continue
   fi
@@ -68,7 +73,15 @@ while read -r upstream_sha source_ref; do
   fi
 
   operation=Create
-  if [[ -n "$origin_sha" ]]; then
+  push_options=(--porcelain)
+  if [[ "$mirror_branch" == true ]]; then
+    # Only these four branches discard origin-only commits. The explicit lease
+    # rejects concurrent changes, including creation of a previously absent branch.
+    push_options+=("--force-with-lease=refs/heads/$branch:$origin_sha")
+    if [[ -n "$origin_sha" ]]; then
+      operation='Mirror upstream (discard origin-only commits)'
+    fi
+  elif [[ -n "$origin_sha" ]]; then
     if git merge-base --is-ancestor "$origin_sha" "$upstream_sha"; then
       operation=Update
     else
@@ -84,22 +97,23 @@ while read -r upstream_sha source_ref; do
 
   if [[ "$DRY_RUN" == true ]]; then
     report "| $branch | Would $operation |"
-  elif git -c push.followTags=false push --porcelain origin \
+  elif git -c push.followTags=false push "${push_options[@]}" origin \
     "$upstream_sha:refs/heads/$branch"; then
     report "| $branch | $operation succeeded |"
   else
-    # Ordinary pushes reject non-fast-forward races and obey branch protection.
-    report "| $branch | FAILED to $operation; check push permissions or branch protection |"
+    report "| $branch | FAILED to $operation; check concurrent changes, push permissions or branch protection |"
     failed=$((failed + 1))
     continue
   fi
   if [[ "$operation" == Create ]]; then
     created=$((created + 1))
+  elif [[ "$mirror_branch" == true ]]; then
+    mirrored=$((mirrored + 1))
   else
     updated=$((updated + 1))
   fi
 done <<< "$upstream_heads"
 
 report ''
-report "Create: $created; update: $updated; unchanged: $unchanged; skipped: $diverged; failed: $failed; ignored non-version branches: $ignored."
+report "Create: $created; update: $updated; mirror: $mirrored; unchanged: $unchanged; skipped: $diverged; failed: $failed; ignored branches: $ignored."
 [[ "$failed" == 0 ]]
