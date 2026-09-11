@@ -1,0 +1,64 @@
+name: Sync upstream version branches
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview changes without pushing branches
+        type: boolean
+        required: true
+        default: true
+  push:
+    branches: [docker-build]
+    paths:
+      - .github/workflows/sync-version-branches.yml
+      - .github/scripts/sync-version-branches.sh
+      - .github/scripts/test_sync_version_branches.py
+  pull_request:
+    branches: [docker-build]
+    paths:
+      - .github/workflows/sync-version-branches.yml
+      - .github/scripts/sync-version-branches.sh
+      - .github/scripts/test_sync_version_branches.py
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test branch synchronization with local Git repositories
+        run: python3 .github/scripts/test_sync_version_branches.py
+
+  sync:
+    needs: test
+    if: >-
+      github.repository == 'jumpserver-east/jumpserver' &&
+      github.ref == 'refs/heads/docker-build' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: sync-upstream-version-branches
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docker-build
+          fetch-depth: 0
+          # A token with workflow write access may be needed for upstream workflow changes.
+          token: ${{ secrets.SYNC_BRANCHES_TOKEN || github.token }}
+      - name: Synchronize version branches from upstream to origin
+        env:
+          UPSTREAM_URL: https://github.com/jumpserver/jumpserver.git
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: bash .github/scripts/sync-version-branches.sh

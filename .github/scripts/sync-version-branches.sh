@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/jumpserver/jumpserver.git}"
+DRY_RUN="${DRY_RUN:-true}"
+# Complete releases, including the historical v3.10.0-7-lts branch.
+version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?(-lts)?$'
+
+if [[ "$DRY_RUN" != true && "$DRY_RUN" != false ]]; then
+  echo 'DRY_RUN must be true or false.' >&2
+  exit 1
+fi
+if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+  echo 'Full Git history is required; use actions/checkout with fetch-depth: 0.' >&2
+  exit 1
+fi
+
+report() {
+  printf '%s\n' "$1"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
+# Read live heads. Never enumerate tags or push to the upstream URL.
+upstream_heads="$(git ls-remote --heads "$UPSTREAM_URL")"
+git fetch --quiet --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+
+report '### Upstream version branch synchronization'
+report "Dry run: $DRY_RUN"
+report ''
+report '| Branch | Result |'
+report '| --- | --- |'
+
+created=0
+updated=0
+unchanged=0
+diverged=0
+failed=0
+ignored=0
+while read -r upstream_sha source_ref; do
+  [[ -n "$source_ref" ]] || continue
+  branch="${source_ref#refs/heads/}"
+  if [[ ! "$branch" =~ $version_pattern ]]; then
+    ignored=$((ignored + 1))
+    continue
+  fi
+
+  origin_sha=''
+  if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    origin_sha="$(git rev-parse "refs/remotes/origin/$branch")"
+  fi
+  if [[ "$origin_sha" == "$upstream_sha" ]]; then
+    report "| $branch | Unchanged |"
+    unchanged=$((unchanged + 1))
+    continue
+  fi
+
+  # Fetch only matching branches that need inspection, without checking out their code.
+  source_local_ref="refs/remotes/version-sync/$branch"
+  git fetch --quiet --no-tags "$UPSTREAM_URL" \
+    "+$source_ref:$source_local_ref"
+  upstream_sha="$(git rev-parse "$source_local_ref")"
+  if [[ "$origin_sha" == "$upstream_sha" ]]; then
+    report "| $branch | Unchanged |"
+    unchanged=$((unchanged + 1))
+    continue
+  fi
+
+  operation=Create
+  if [[ -n "$origin_sha" ]]; then
+    if git merge-base --is-ancestor "$origin_sha" "$upstream_sha"; then
+      operation=Update
+    else
+      status=$?
+      if [[ "$status" != 1 ]]; then
+        exit "$status"
+      fi
+      report "| $branch | Skipped: origin has commits absent from upstream |"
+      diverged=$((diverged + 1))
+      continue
+    fi
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    report "| $branch | Would $operation |"
+  elif git -c push.followTags=false push --porcelain origin \
+    "$upstream_sha:refs/heads/$branch"; then
+    report "| $branch | $operation succeeded |"
+  else
+    # Ordinary pushes reject non-fast-forward races and obey branch protection.
+    report "| $branch | FAILED to $operation; check push permissions or branch protection |"
+    failed=$((failed + 1))
+    continue
+  fi
+  if [[ "$operation" == Create ]]; then
+    created=$((created + 1))
+  else
+    updated=$((updated + 1))
+  fi
+done <<< "$upstream_heads"
+
+report ''
+report "Create: $created; update: $updated; unchanged: $unchanged; skipped: $diverged; failed: $failed; ignored non-version branches: $ignored."
+[[ "$failed" == 0 ]]
