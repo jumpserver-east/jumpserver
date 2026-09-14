@@ -1,6 +1,8 @@
 # 同步上游版本及开发分支
 
 工作流：`.github/workflows/sync-version-branches.yml`，部署分支：`docker-build`。
+该分支只存放自有 Actions、构建配置、脚本及说明；应用源码保留在 `dev`、`v3`、`v4`、
+`v5` 和版本分支中。EE 镜像构建会单独检出指定源码到 `source/`。
 
 - 源仓库：`https://github.com/jumpserver/jumpserver.git`。
 - 目标仓库：`jumpserver-east/jumpserver`（工作流 checkout 配置的 `origin`）。

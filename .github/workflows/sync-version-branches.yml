@@ -58,8 +58,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Keep our sync/build workflows and the generic handler that relays
-          # push events from mirrored branches to the EE image build workflow.
+          # Keep our sync/build workflows and leave the generic handler enabled
+          # on mirrored source branches, where it relays push events to EE builds.
           # Repository-level disable survives syncing unchanged upstream YAML.
           gh api --paginate "repos/${GH_REPO}/actions/workflows?per_page=100" \
             --jq '.workflows[] | [.id, .path, .state] | @tsv' \
@@ -95,6 +95,13 @@ jobs:
                 ;;
               *) continue ;;
             esac
+
+            # A workflow removed from the configuration branch may be registered
+            # as deleted; there is no runnable workflow to disable in that state.
+            if [[ "${workflow_state}" == deleted ]]; then
+              echo "| ${workflow_path} | deleted |" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
 
             if [[ "${workflow_state}" != disabled_manually ]]; then
               if ! gh api --method PUT \
