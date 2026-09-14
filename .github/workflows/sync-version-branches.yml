@@ -38,6 +38,82 @@ jobs:
       - name: Test branch synchronization with local Git repositories
         run: python3 .github/scripts/test_sync_version_branches.py
 
+  disable-inherited-workflows:
+    needs: test
+    if: >-
+      github.repository == 'jumpserver-east/jumpserver' &&
+      github.ref == 'refs/heads/docker-build' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Disable inherited workflows across all branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Keep our sync/build workflows and the generic handler that relays
+          # push events from mirrored branches to the EE image build workflow.
+          # Repository-level disable survives syncing unchanged upstream YAML.
+          gh api --paginate "repos/${GH_REPO}/actions/workflows?per_page=100" \
+            --jq '.workflows[] | [.id, .path, .state] | @tsv' \
+            > "${RUNNER_TEMP}/workflows.tsv"
+
+          {
+            echo '### Inherited workflow policy'
+            echo
+            echo '| Workflow | State |'
+            echo '| --- | --- |'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          failed=0
+          while IFS=$'\t' read -r workflow_id workflow_path workflow_state; do
+            case "${workflow_path}" in
+              .github/workflows/build-ansible-executor.yml|\
+              .github/workflows/build-base-image.yml|\
+              .github/workflows/build-python-image.yml|\
+              .github/workflows/check-compilemessages.yml|\
+              .github/workflows/cleanup-branches.yml|\
+              .github/workflows/discord-release.yml|\
+              .github/workflows/docs-release.yml|\
+              .github/workflows/issue-close-require.yml|\
+              .github/workflows/issue-close.yml|\
+              .github/workflows/issue-comment.yml|\
+              .github/workflows/issue-open.yml|\
+              .github/workflows/issue-recent-alert.yml|\
+              .github/workflows/issue-untimely-alert.yml|\
+              .github/workflows/jms-build-test.yml|\
+              .github/workflows/release-drafter.yml|\
+              .github/workflows/sync-gitee.yml|\
+              .github/workflows/translate-readme.yml)
+                ;;
+              *) continue ;;
+            esac
+
+            if [[ "${workflow_state}" != disabled_manually ]]; then
+              if ! gh api --method PUT \
+                "repos/${GH_REPO}/actions/workflows/${workflow_id}/disable" --silent; then
+                echo "| ${workflow_path} | FAILED to disable |" >> "${GITHUB_STEP_SUMMARY}"
+                failed=$((failed + 1))
+                continue
+              fi
+            fi
+
+            workflow_state="$(gh api "repos/${GH_REPO}/actions/workflows/${workflow_id}" --jq '.state')"
+            echo "${workflow_path}: ${workflow_state}"
+            echo "| ${workflow_path} | ${workflow_state} |" >> "${GITHUB_STEP_SUMMARY}"
+            if [[ "${workflow_state}" != disabled_manually ]]; then
+              failed=$((failed + 1))
+            fi
+          done < "${RUNNER_TEMP}/workflows.tsv"
+          [[ "${failed}" == 0 ]]
+
   sync:
     needs: test
     if: >-

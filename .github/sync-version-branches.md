@@ -6,7 +6,8 @@
 - 目标仓库：`jumpserver-east/jumpserver`（工作流 checkout 配置的 `origin`）。
 - 版本分支同步和开发分支镜像同步共用每周一次的定时任务：每周一 UTC 00:17，即北京时间 08:17。GitHub 的定时任务可能延迟。
 - 支持手动运行，`dry_run` 默认勾选；定时运行会实际同步。
-- 修改工作流或脚本的 push / pull request 仅运行本地 Git 集成测试。
+- 修改工作流或脚本的 push / pull request 会运行本地 Git 集成测试，不执行分支同步。
+- `docker-build` 的相关 push、定时运行、非 dry-run 手动运行还会在仓库级停用明确列出的上游工作流；dry-run 和 pull request 不修改工作流状态。详见 [工作流策略](workflow-policy.md)。
 
 ## 分支规则
 
