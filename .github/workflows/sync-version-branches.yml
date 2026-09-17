@@ -139,10 +139,12 @@ jobs:
         with:
           ref: docker-build
           fetch-depth: 0
-          # A token with workflow write access may be needed for upstream workflow changes.
+          # This PAT overrides GITHUB_TOKEN; contents: write above cannot grant it access.
+          # It needs repository write access and workflow write access for workflow changes.
           token: ${{ secrets.SYNC_BRANCHES_TOKEN || github.token }}
       - name: Synchronize version and development branches from upstream to origin
         env:
           UPSTREAM_URL: https://github.com/jumpserver/jumpserver.git
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          SYNC_TOKEN_SOURCE: ${{ secrets.SYNC_BRANCHES_TOKEN && 'SYNC_BRANCHES_TOKEN' || 'GITHUB_TOKEN' }}
         run: bash .github/scripts/sync-version-branches.sh

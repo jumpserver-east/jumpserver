@@ -28,6 +28,9 @@ git fetch --quiet --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
 
 report '### Upstream branch synchronization'
 report "Dry run: $DRY_RUN"
+if [[ -n "${SYNC_TOKEN_SOURCE:-}" ]]; then
+  report "Push credential: $SYNC_TOKEN_SOURCE"
+fi
 report ''
 report '| Branch | Result |'
 report '| --- | --- |'
@@ -97,12 +100,26 @@ while read -r upstream_sha source_ref; do
 
   if [[ "$DRY_RUN" == true ]]; then
     report "| $branch | Would $operation |"
-  elif git -c push.followTags=false push "${push_options[@]}" origin \
-    "$upstream_sha:refs/heads/$branch"; then
+  elif push_output="$(LC_ALL=C git -c push.followTags=false push "${push_options[@]}" origin \
+    "$upstream_sha:refs/heads/$branch" 2>&1)"; then
+    printf '%s\n' "$push_output"
     report "| $branch | $operation succeeded |"
   else
-    report "| $branch | FAILED to $operation; check concurrent changes, push permissions or branch protection |"
+    printf '%s\n' "$push_output" >&2
     failed=$((failed + 1))
+    case "$push_output" in
+      *'Permission to '*' denied to '*|*'Authentication failed'*|\
+      *'Permission denied (publickey)'*|\
+      *'The requested URL returned error: 401'*|*'The requested URL returned error: 403'*)
+        report "| $branch | FAILED to $operation: origin denied authentication or repository write access |"
+        report ''
+        report 'Sync stopped: remaining branches were not attempted because origin rejected the push credential.'
+        report 'For GitHub Actions, SYNC_BRANCHES_TOKEN overrides GITHUB_TOKEN. Check the token owner has Write access to the target repository, the token includes this repository with Contents and Workflows write permissions, and required organization approval/SSO authorization is complete.'
+        report 'The workflow contents: write permission applies only to GITHUB_TOKEN; it cannot grant permissions to a PAT. See .github/sync-version-branches.md for setup.'
+        break
+        ;;
+    esac
+    report "| $branch | FAILED to $operation; check concurrent changes, push permissions or branch protection |"
     continue
   fi
   if [[ "$operation" == Create ]]; then

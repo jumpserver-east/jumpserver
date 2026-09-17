@@ -2,10 +2,12 @@
 """Exercise actual Git fetch/push behavior using disposable local repositories."""
 
 import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+from threading import Thread
 import unittest
 
 
@@ -210,6 +212,55 @@ class SyncVersionBranchesTests(unittest.TestCase):
         self.assertIn('failed: 1;', summary)
         self.assertNotIn('refs/heads/v3.10.23-lts', self.refs(self.origin))
         self.assertIn('refs/heads/v4.10.14-lts', self.refs(self.origin))
+
+    def test_http_push_permission_denial_stops_remaining_branches(self):
+        self.branch(self.upstream, 'v3.10.23-lts', self.base)
+        self.branch(self.upstream, 'v4.10.14-lts', self.base)
+        self.env['SYNC_TOKEN_SOURCE'] = 'SYNC_BRANCHES_TOKEN'
+        before_source, before_dest = self.refs(self.upstream), self.refs(self.origin)
+        requests = []
+
+        class DeniedPushHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                body = b'Permission to jumpserver-east/jumpserver.git denied to Nickyang00.\n'
+                self.send_response(403)
+                self.send_header('Content-Type', 'text/plain')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        # Keep reads on the real local repository, but have Git's HTTP transport
+        # encounter the same repository-wide denial as a GitHub push.
+        with ThreadingHTTPServer(('127.0.0.1', 0), DeniedPushHandler) as server:
+            self.git(self.work, 'config', 'remote.origin.pushurl',
+                     f'http://127.0.0.1:{server.server_port}/origin.git')
+            self.git(self.work, 'config', 'http.proxy', '')
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                result, _ = self.sync()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(requests, [])
+                result, summary = self.sync('false')
+            finally:
+                server.shutdown()
+                thread.join()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('The requested URL returned error: 403', result.stderr)
+        self.assertEqual(requests, ['/origin.git/info/refs?service=git-receive-pack'])
+        self.assertIn('Push credential: SYNC_BRANCHES_TOKEN', summary)
+        self.assertIn('origin denied authentication or repository write access', summary)
+        self.assertIn('Sync stopped: remaining branches were not attempted', summary)
+        self.assertIn('Contents and Workflows write permissions', summary)
+        self.assertIn('failed: 1;', summary)
+        self.assertNotIn('| v4.10.14-lts |', summary)
+        self.assertEqual(self.refs(self.upstream), before_source)
+        self.assertEqual(self.refs(self.origin), before_dest)
 
     def test_invalid_dry_run_is_rejected(self):
         before = self.refs(self.origin)
