@@ -6,7 +6,7 @@
 
 - 源仓库：`https://github.com/jumpserver/jumpserver.git`。
 - 目标仓库：`jumpserver-east/jumpserver`（工作流 checkout 配置的 `origin`）。
-- 版本分支同步和开发分支镜像同步共用每周一次的定时任务：每周一 UTC 00:17，即北京时间 08:17。GitHub 的定时任务可能延迟。
+- 版本分支同步和开发分支镜像同步共用周一至周五的定时任务：UTC 01:00，即北京时间 09:00。GitHub 的定时任务可能延迟。
 - 支持手动运行，`dry_run` 默认勾选；定时运行会实际同步。
 - 修改工作流或脚本的 push / pull request 会运行本地 Git 集成测试，不执行分支同步。
 - `docker-build` 的相关 push、定时运行、非 dry-run 手动运行还会在仓库级停用明确列出的上游工作流；dry-run 和 pull request 不修改工作流状态。详见 [工作流策略](workflow-policy.md)。
@@ -90,3 +90,9 @@ DRY_RUN=true bash .github/scripts/sync-version-branches.sh
 集成测试使用临时本地 Git 仓库，不连接 GitHub。第二条命令需要完整 Git 历史和
 正确的 `origin`，会读取真实远程并获取提交，但不推送；结果同时输出到终端及
 `GITHUB_STEP_SUMMARY`（如果设置）。
+
+## 构建邮件通知
+
+镜像构建始终通知触发工作流的操作人，重跑时通知重跑操作人。邮件包含结果、分支/提交来源、
+镜像标签和运行链接。Lina/Luna 的通知在统一 Web 构建完成后发送；dispatch 失败单独通知。
+需要配置 SMTP Secrets 和私有邮箱用户映射，详见 [统一邮件配置](https://github.com/jumpserver-east/docker-web/blob/docker-build/.github/build-notifications.md)。
