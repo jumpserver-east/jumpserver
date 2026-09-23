@@ -128,9 +128,11 @@ class CommandViewSet(JMSBulkModelViewSet):
             merged_commands.sort(key=lambda command: command.timestamp, reverse=True)
         page = self.paginate_queryset(merged_commands)
         if page is not None:
+            page = self.load_face_verify(page)
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
+        merged_commands = self.load_face_verify(merged_commands)
         serializer = self.get_serializer(merged_commands, many=True)
         return Response(serializer.data)
 
@@ -287,9 +289,72 @@ def get_face_verify_summary(record, failed_count=0):
         'sign': record.sign,
         'status': record.status,
         'is_success': record.status == record.StatusChoices.passed,
+        'stage': get_face_verify_audit_stage(record),
+        'message': get_face_verify_audit_message(record),
         'failed_count': failed_count,
         'score': float(record.score) if record.score is not None else None,
         'threshold': float(record.threshold) if record.threshold is not None else None,
         'ticket_id': str(record.ticket_id) if record.ticket_id else None,
         'date_compared': record.date_compared,
     }
+
+
+def get_face_verify_audit_stage(record):
+    detail = str(record.error_message or '').lower()
+    if record.status == record.StatusChoices.error:
+        if is_face_verify_id_number_error(detail):
+            return 'id_number_error'
+        if is_face_verify_camera_face_missing_error(detail):
+            return 'camera_face_missing'
+        if is_face_verify_callback_image_error(detail):
+            return 'callback_image_error'
+        return 'compare_error'
+
+    mapper = {
+        record.StatusChoices.passed: 'passed',
+        record.StatusChoices.token_failed: 'token_failed',
+        record.StatusChoices.camera_call_failed: 'camera_call_failed',
+        record.StatusChoices.timeout: 'timeout',
+        record.StatusChoices.failed: 'compare_rejected',
+    }
+    return mapper.get(record.status, record.status)
+
+
+def get_face_verify_audit_message(record):
+    mapper = {
+        'passed': '通过',
+        'id_number_error': '调用拍照系统失败',
+        'camera_face_missing': '人脸比对不通过',
+        'callback_image_error': '人脸比对不通过',
+        'compare_error': '人脸比对不通过',
+        'token_failed': '调用拍照系统失败',
+        'camera_call_failed': '调用拍照系统失败',
+        'timeout': '等待拍照系统回调超时',
+        'compare_rejected': '人脸比对不通过',
+    }
+    return mapper.get(get_face_verify_audit_stage(record), '')
+
+
+def is_face_verify_id_number_error(detail):
+    return 'id number' in detail or '身份证' in detail
+
+
+def is_face_verify_callback_image_error(detail):
+    markers = (
+        'base64 image',
+        'image data',
+        'invalid image',
+        'image is too large',
+        '图片',
+    )
+    return any(marker in detail for marker in markers)
+
+
+def is_face_verify_camera_face_missing_error(detail):
+    markers = (
+        'face image is empty',
+        'faceStr',
+        '人脸信息',
+        '人脸图片',
+    )
+    return any(marker.lower() in detail for marker in markers)
