@@ -27,14 +27,14 @@ def init_ip_reader():
 
 
 def get_ip_city_by_geoip(ip):
-    init_ip_reader()
-
     try:
         is_private = ipaddress.ip_address(ip.strip()).is_private
         if is_private:
             return _('LAN')
     except ValueError:
         return _("Invalid ip")
+
+    init_ip_reader()
 
     try:
         response = reader.city(ip)

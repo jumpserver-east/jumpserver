@@ -108,7 +108,11 @@ def get_ip_city(ip):
         is_zh = settings.LANGUAGE_CODE.startswith('zh')
         if country == '中国' and is_zh:
             return city
-    return get_ip_city_by_geoip(ip)
+    try:
+        return get_ip_city_by_geoip(ip)
+    except FileNotFoundError:
+        # IP enrichment is optional; a missing local database must not block authentication.
+        return _("Unknown")
 
 
 def lookup_domain(domain):

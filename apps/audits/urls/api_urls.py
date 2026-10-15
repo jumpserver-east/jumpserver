@@ -5,6 +5,7 @@ from django.urls.conf import path
 from rest_framework.routers import DefaultRouter
 
 from .. import api
+from ..user_authorization import UserAuthorizationViewSet
 
 app_name = "audits"
 
@@ -20,6 +21,7 @@ router.register(r'my-login-logs', api.MyLoginLogViewSet, 'my-login-log')
 router.register(r'tickets', api.TicketAuditViewSet, 'ticket-audit')
 router.register(r'user-sessions', api.UserSessionViewSet, 'user-session')
 router.register(r'service-access-logs', api.ServiceAccessLogViewSet, 'service-access-log')
+router.register(r'user-authorizations', UserAuthorizationViewSet, 'user-authorization')
 
 urlpatterns = [
     path('activities/', api.ResourceActivityAPIView.as_view(), name='resource-activities'),

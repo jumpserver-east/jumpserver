@@ -4,6 +4,15 @@
         {{ title | safe }}
     </h1>
     <hr>
+    {% if repair_code %}
+        <div>
+            <h2>{% trans 'Repair code' %}</h2>
+            <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">{{ repair_code }}</p>
+            <p>{% trans 'If you agree to this request, give this code to the applicant. The applicant can enter it in My tickets to obtain the requested asset permissions.' %}</p>
+            <p>{% trans 'This code is bound to this ticket, can only be used by its applicant once, and expires at:' %} {{ repair_code_expired }}</p>
+        </div>
+        <hr>
+    {% endif %}
     <div>
         {% for child in content %}
             <div class="card">

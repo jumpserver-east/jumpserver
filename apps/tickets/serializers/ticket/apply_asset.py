@@ -1,3 +1,7 @@
+from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -9,7 +13,7 @@ from tickets.models import ApplyAssetTicket
 from .common import BaseApplyAssetSerializer
 from .ticket import TicketApplySerializer
 
-__all__ = ['ApplyAssetSerializer', 'ApproveAssetSerializer']
+__all__ = ['ApplyAssetSerializer', 'ApproveAssetSerializer', 'RepairCodeSerializer']
 
 asset_or_node_help_text = _("Select at least one asset or node")
 
@@ -65,13 +69,37 @@ class ApplyAssetSerializer(BaseApplyAssetSerializer, TicketApplySerializer):
     def validate(self, attrs):
         attrs['type'] = 'apply_asset'
         attrs = super().validate(attrs)
-        if self.is_final_approval and (
+        if (not self.instance or self.is_final_approval) and (
                 not attrs.get('apply_nodes') and not attrs.get('apply_assets')
         ):
             raise serializers.ValidationError({
                 'apply_nodes': asset_or_node_help_text,
                 'apply_assets': asset_or_node_help_text,
             })
+
+        if not self.instance:
+            if not attrs.get('apply_accounts'):
+                raise serializers.ValidationError({'apply_accounts': _('This field is required.')})
+            if attrs['apply_date_expired'] <= timezone.now():
+                raise serializers.ValidationError({
+                    'apply_date_expired': _('The expiration date must be in the future.')
+                })
+            if not settings.EMAIL_HOST:
+                raise serializers.ValidationError(_('Configure the email server before requesting assets.'))
+            rule = attrs['flow'].rules.order_by('level').first()
+            assignees = list(rule.get_assignees(org_id=attrs['org_id'])) if rule else []
+            assignees = [user for user in assignees if user != attrs['applicant']]
+            if not assignees:
+                raise serializers.ValidationError({
+                    'flow_id': _('No approvers matched the first approval level.')
+                })
+            for user in assignees:
+                try:
+                    validate_email(user.email)
+                except DjangoValidationError:
+                    raise serializers.ValidationError({
+                        'flow_id': _('Approver {} must have a valid email address.').format(user)
+                    })
 
         return attrs
 
@@ -85,3 +113,11 @@ class ApproveAssetSerializer(ApplyAssetSerializer):
     class Meta(ApplyAssetSerializer.Meta):
         read_only_fields = TicketApplySerializer.Meta.fields_small + \
                            ApplyAssetSerializer.Meta.read_only_fields
+
+
+class RepairCodeSerializer(serializers.Serializer):
+    code = serializers.RegexField(
+        regex=r'\A[0-9]{6}\Z', min_length=6, max_length=6,
+        trim_whitespace=False, write_only=True, label=_('Repair code'),
+        error_messages={'invalid': _('Enter a six-digit repair code.')}
+    )

@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from audits.handler import create_or_update_operate_log
 from common.api import CommonApiMixin, ReportExportMixin
@@ -168,14 +169,47 @@ class TicketViewSet(ReportExportMixin, CommonApiMixin, viewsets.ModelViewSet):
         return Response('ok')
 
 
+class RepairCodeThrottle(UserRateThrottle):
+    scope = 'ticket_repair_code'
+    rate = '5/min'
+
+
+class RepairCodeHourlyThrottle(UserRateThrottle):
+    scope = 'ticket_repair_code_hour'
+    rate = '20/hour'
+
+
 class ApplyAssetTicketViewSet(TicketViewSet):
     model = ApplyAssetTicket
     filterset_class = filters.ApplyAssetTicketFilter
     serializer_class = serializers.ApplyAssetSerializer
     serializer_classes = {
         'open': serializers.ApplyAssetSerializer,
-        'approve': serializers.ApproveAssetSerializer
+        'approve': serializers.ApproveAssetSerializer,
+        'redeem_code': serializers.RepairCodeSerializer
     }
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+
+    @action(
+        detail=False, methods=[POST], url_path='redeem-code',
+        permission_classes=[IsAuthenticated],
+        throttle_classes=[RepairCodeThrottle, RepairCodeHourlyThrottle]
+    )
+    def redeem_code(self, request, *args, **kwargs):
+        from tickets.repair_codes import redeem_repair_code
+
+        serializer = serializers.RepairCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ticket = redeem_repair_code(request.user, serializer.validated_data['code'])
+        self._record_operate_log(ticket, TicketAction.approve)
+        return Response({
+            'id': str(ticket.id), 'serial_num': ticket.serial_num,
+            'state': ticket.state,
+            'detail': _('Repair code verified. The requested asset permissions have been granted.')
+        })
 
 
 class ApplyLoginTicketViewSet(TicketViewSet):

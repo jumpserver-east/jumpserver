@@ -208,6 +208,7 @@ def on_django_start_set_operate_log_monitor_models(sender, **kwargs):
         'ConnectionToken', 'SessionJoinRecord', 'SessionSharing',
         'HistoricalJob', 'Status', 'TicketStep', 'Ticket',
         'UserAssetGrantedTreeNodeRelation', 'TicketAssignee',
+        'TicketRepairCode',
         'SuperTicket', 'SuperConnectionToken', 'AdminConnectionToken', 'PermNode',
         'PermedAsset', 'PermedAccount', 'MenuPermission',
         'Permission', 'TicketSession', 'ApplyLoginTicket',

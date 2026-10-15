@@ -19,6 +19,7 @@ from ops.models import JobExecution
 from orgs.mixins.models import OrgModelMixin, Organization
 from orgs.utils import current_org
 from terminal.models import default_storage
+from users.models import User
 from .const import (
     OperateChoices,
     ActionChoices,
@@ -41,7 +42,15 @@ __all__ = [
     "UserLoginLogHmac",
     "FTPLogHmac",
     "PasswordChangeLogHmac",
+    "UserAuthorization",
 ]
+
+
+class UserAuthorization(User):
+    class Meta:
+        proxy = True
+        verbose_name = _("User authorization")
+        default_permissions = ('view',)
 
 
 def _get_city_display(ip, city='') -> str:

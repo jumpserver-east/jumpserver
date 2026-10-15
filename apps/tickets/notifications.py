@@ -11,6 +11,7 @@ from common.db.encoder import ModelJSONFieldEncoder
 from common.sdk.im.wecom import wecom_tool
 from common.utils import get_logger, random_string, reverse
 from notifications.notifications import UserMessage
+from notifications.backends import BACKEND
 from . import const
 from .models import Ticket, ApplyAssetTicket
 
@@ -109,10 +110,24 @@ class BaseTicketMessage(UserMessage):
 
 
 class TicketAppliedToAssigneeMessage(BaseTicketMessage):
-    def __init__(self, user, ticket):
+    def __init__(self, user, ticket, repair_code=None):
         self.token = random_string(32)
         self.ticket = ticket
+        self.repair_code = repair_code
         super().__init__(user)
+
+    def get_backend_msg_mapper(self, backends):
+        if isinstance(self.ticket, ApplyAssetTicket):
+            backends = set(backends) | {BACKEND.EMAIL}
+        return super().get_backend_msg_mapper(backends)
+
+    def get_email_msg(self):
+        if not self.repair_code:
+            return super().get_email_msg()
+        return self.gen_html_string(
+            **super().get_html_context(), repair_code=self.repair_code,
+            repair_code_expired=self.ticket.apply_date_expired
+        )
 
     @property
     def content_title(self):
@@ -129,12 +144,7 @@ class TicketAppliedToAssigneeMessage(BaseTicketMessage):
 
     def get_ticket_approval_url(self, external=True):
         if isinstance(self.ticket, ApplyAssetTicket):
-            no_assets = not self.ticket.apply_assets.exists()
-            no_nodes = not self.ticket.apply_nodes.exists()
-            no_accounts = not self.ticket.apply_accounts
-
-            if (no_assets and no_nodes) or no_accounts:
-                return None
+            return None
 
         url = reverse('tickets:direct-approve', kwargs={'token': self.token})
         if not external:
@@ -143,6 +153,8 @@ class TicketAppliedToAssigneeMessage(BaseTicketMessage):
 
     def get_html_context(self):
         context = super().get_html_context()
+        if isinstance(self.ticket, ApplyAssetTicket):
+            return context
         context['ticket_approval_url'] = self.get_ticket_approval_url()
         data = {
             'ticket_id': self.ticket.id,

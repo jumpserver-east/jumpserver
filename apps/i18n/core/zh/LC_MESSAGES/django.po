@@ -13907,3 +13907,69 @@ msgstr "用户的 USB Key"
 #: xpack/plugins/cloud/serializers/account_attrs.py:108
 msgid "domain_name"
 msgstr "域名"
+
+msgid "Repair code"
+msgstr "抢修码"
+
+msgid "Asset requests must be authorized by the applicant using a repair code."
+msgstr "资产申请须由申请人输入抢修码完成授权。"
+
+msgid "The repair code is invalid, expired, or already used."
+msgstr "抢修码无效、已过期或已使用。"
+
+msgid "The requested assets or accounts are no longer available. Please apply again."
+msgstr "申请的资产或账号已不可用，请重新申请。"
+
+msgid "{} entered the repair code to obtain the requested asset permissions."
+msgstr "{} 输入抢修码，获取了本工单申请的资产权限。"
+
+msgid "The expiration date must be in the future."
+msgstr "失效日期必须晚于当前时间。"
+
+msgid "Configure the email server before requesting assets."
+msgstr "请先配置邮件服务器，再申请资产。"
+
+msgid "No approvers matched the first approval level."
+msgstr "第一级审批未匹配到审批人。"
+
+msgid "Approver {} must have a valid email address."
+msgstr "审批人 {} 必须配置有效的邮箱地址。"
+
+msgid "Enter a six-digit repair code."
+msgstr "请输入六位数字抢修码。"
+
+msgid "Repair code verified. The requested asset permissions have been granted."
+msgstr "抢修码验证成功，已获得本工单申请的资产权限。"
+
+msgid "If you agree to this request, give this code to the applicant. The applicant can enter it in My tickets to obtain the requested asset permissions."
+msgstr "如同意本次申请，请将抢修码提供给申请人。申请人在“我发起的”工单页面输入后，即可获取本工单申请的资产权限。"
+
+msgid "This code is bound to this ticket, can only be used by its applicant once, and expires at:"
+msgstr "本码与当前工单绑定，仅限申请人使用一次，失效时间："
+
+msgid "User authorization"
+msgstr "用户授权"
+
+msgid "Granted by"
+msgstr "授权人"
+
+msgid "Authorization rule name"
+msgstr "授权规则名称"
+
+msgid "Authorization start time"
+msgstr "授权生效时间"
+
+msgid "Authorization expiration time"
+msgstr "授权到期时间"
+
+msgid "Authorized asset"
+msgstr "授权资产"
+
+msgid "Asset IP"
+msgstr "资产ip"
+
+msgid "Asset groups"
+msgstr "资产属组"
+
+msgid "Accounts available to user"
+msgstr "用户有权限使用的账号"

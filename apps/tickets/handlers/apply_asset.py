@@ -1,16 +1,26 @@
+from functools import partial
+
+from django.db import transaction
 from django.utils.translation import gettext as _
 
-from common.utils import get_logger
 from orgs.utils import tmp_to_org
 from perms.models import AssetPermission
 from tickets.models import ApplyAssetTicket
 from .base import BaseHandler
 
-logger = get_logger(__file__)
-
 
 class Handler(BaseHandler):
     ticket: ApplyAssetTicket
+
+    def _send_applied_mail_to_assignees(self, step=None):
+        from tickets.repair_codes import issue_repair_codes
+        issue_repair_codes(self.ticket, self.ticket.current_assignees)
+
+    def _send_processed_mail_to_applicant(self, step=None):
+        transaction.on_commit(partial(super()._send_processed_mail_to_applicant, step))
+
+    def _send_ticket_updated_mail_to_cc_users(self):
+        transaction.on_commit(super()._send_ticket_updated_mail_to_cc_users)
 
     def _on_step_approved(self, step):
         is_finished = super()._on_step_approved(step)
@@ -65,9 +75,6 @@ class Handler(BaseHandler):
             asset_permission.nodes.set(apply_nodes)
             asset_permission.assets.set(apply_assets)
 
-            try:
-                asset_permission.users.add(self.ticket.applicant)
-            except Exception as e:
-                logger.error('Add user to asset permission failed: %s', e)
+            asset_permission.users.add(self.ticket.applicant)
 
         return asset_permission
