@@ -423,6 +423,12 @@
     var scrollbarDragStartY = 0;
     var scrollbarDragStartTop = 0;
     var currentLogType = 'celery';
+    var I18N = {
+        status: '{% trans "Status" %}',
+        detail: '{% trans "Detail" %}',
+        back: '{% trans "Back" %}',
+        output: '{% trans "Output" %}',
+    };
     var vendor = "{{ vendor }}";
     var extraQuery = Object.fromEntries(new URLSearchParams(window.location.search));
     var displayedTaskState = null;
@@ -729,11 +735,11 @@
                     currentLogType === 'celery'
                 ) {
                     term.write(
-                        `${gettext('Status')}: ${getTaskStateLabel(data.state)}\r\n` +
-                        `${gettext('Output')}: ${gettext('Log unavailable or the log directory is not shared.')}\r\n`
+                        `${I18N.status}: ${getTaskStateLabel(data.state)}\r\n` +
+                        `${I18N.output}: ${gettext('Log unavailable or the log directory is not shared.')}\r\n`
                     );
                 } else {
-                    term.write(`Ansible ${gettext('Detail')}: ${gettext('Not found')}\r\n`);
+                    term.write(`Ansible ${I18N.detail}: ${gettext('Not found')}\r\n`);
                 }
                 scheduleTerminalScrollbarUpdate();
                 return;
@@ -787,7 +793,7 @@
         updateTaskDuration();
         if (writeToTerminal && announcedTaskState !== state) {
             announcedTaskState = state;
-            term.write(`${gettext('Status')}: ${getTaskStatusMessage(state)}\r\n`);
+            term.write(`${I18N.status}: ${getTaskStatusMessage(state)}\r\n`);
             scheduleTerminalScrollbarUpdate();
         }
     }
@@ -908,10 +914,10 @@
         button.toggleClass('is-active', showAnsible);
         button.attr('aria-pressed', showAnsible ? 'true' : 'false');
         button.find('.toggle-log-label').text(
-            showAnsible ? gettext('Back') : `Ansible ${gettext('Detail')}`
+            showAnsible ? I18N.back : `Ansible ${I18N.detail}`
         );
         $('#terminal-heading-label').text(
-            showAnsible ? `Ansible ${gettext('Detail')}` : gettext('Output')
+            showAnsible ? `Ansible ${I18N.detail}` : I18N.output
         );
         connectLog(currentLogType);
     });
