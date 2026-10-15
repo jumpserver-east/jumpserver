@@ -4,7 +4,6 @@ import base64
 import binascii
 import inspect
 import json
-import logging
 import threading
 import time
 import uuid
@@ -21,7 +20,6 @@ from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured, ObjectDoesNotExist
 from django.db.models import Q
 from django.shortcuts import reverse, redirect, get_object_or_404
-from django.utils import timezone
 from django.utils.http import urlencode
 from django.utils.translation import gettext as _
 from rest_framework.request import Request
@@ -45,8 +43,6 @@ from .const import OTP_BIND_AFTER_MFA_SESSION_KEY
 from .signals import post_auth_success, post_auth_failed
 
 logger = get_logger(__name__)
-# UKey 登录取证日志（data/logs/ukey_evidence.log，每次验签一行 JSON：签名原文、证书、签名值、P7、U013 报文）
-ukey_evidence_logger = logging.getLogger('ukey.evidence')
 
 # 模块级别的线程上下文，用于 authenticate 函数中标记当前线程
 _auth_thread_context = Local()
@@ -838,45 +834,38 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
 
     def _write_ukey_evidence(self, user, ukey_serial, ip, challenge, signer, p7_der, p7_to_send, normalized, result=None, error=None):
         """
-        把一次 UKey 验签的完整取证信息写入 ukey_evidence.log（一行 JSON）：
-        签名原文（挑战值）、用户数字证书、签名值 r/s/DER、插件原始 P7 与送平台的 P7、U013 请求/响应报文和流水号。
+        把一次 UKey 验签的取证信息作为一行 JSON 写入 jumpserver.log（INFO）：
+        签名原文（挑战值）、用户数字证书、签名值 r/s/DER、UKey 产生的 P7、U013 请求/响应报文和流水号。
         证书、签名值、P7 都不是秘密，挑战值已一次性作废。写入失败只记错误，不影响登录结论。返回签名值字典。
         """
         signature = cpas.signature_values(p7_to_send)
         try:
-            u013 = {'url': settings.CPAS_URL}
+            u013 = {'serial_no': None, 'request': None}
             if result is not None:
                 u013.update(serial_no=result.serial_no, request=result.request, http_status=result.http_status,
-                            response=result.data, response_text=result.response_text, code=result.code,
-                            remark=result.remark, elapsed_ms=result.elapsed_ms)
+                            response=result.response_text, code=result.code, remark=result.remark, elapsed_ms=result.elapsed_ms)
             elif error is not None:
                 u013.update(serial_no=error.serial_no, request=error.request, code=error.code, remark=error.remark,
-                            error=type(error).__name__, message=str(error))
+                            error=type(error).__name__)
             evidence = {
-                'time': timezone.now().isoformat(timespec='seconds'),
                 'result': 'success' if result is not None else 'failed',
                 'user': user.username,
                 'ip': ip,
                 'ukey_serial': ukey_serial,
-                'user_id_sm2': settings.CPAS_UKEY_USER_ID,
+                'sm2_user_id': settings.CPAS_UKEY_USER_ID,
                 'challenge': challenge,
-                'challenge_hex': challenge.encode('ascii').hex().upper(),
                 'certificate': {
                     'subject': signer.subject, 'issuer': signer.issuer, 'serial_hex': signer.serial_hex,
                     'not_before': signer.not_before.isoformat(), 'not_after': signer.not_after.isoformat(),
-                    'algorithm': signer.algorithm, 'public_key_hex': signer.public_key.hex().upper(),
-                    'sha256': signer.sha256, 'base64': base64.b64encode(signer.der).decode('ascii'),
+                    'public_key_hex': signer.public_key.hex().upper(), 'sha256': signer.sha256,
+                    'base64': base64.b64encode(signer.der).decode('ascii'),
                 },
                 'signature': signature,
-                'p7': {
-                    'base64': base64.b64encode(p7_der).decode('ascii'),
-                    'summary': cpas.p7_summary(p7_der),
-                    'normalized': normalized,
-                    'sent_base64': base64.b64encode(p7_to_send).decode('ascii') if normalized else None,
-                },
+                'p7_base64': base64.b64encode(p7_der).decode('ascii'),
+                'p7_normalized': normalized,
                 'u013': u013,
             }
-            ukey_evidence_logger.info(json.dumps(evidence, ensure_ascii=False, default=str))
+            logger.info('UKey CPAS evidence: %s', json.dumps(evidence, ensure_ascii=False, default=str))
         except Exception as e:  # noqa: BLE001
             logger.error('UKey evidence logging failed for %s: %s', user.username, e)
         return signature if isinstance(signature, dict) else {}
