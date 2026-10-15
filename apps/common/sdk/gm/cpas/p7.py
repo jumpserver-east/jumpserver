@@ -17,14 +17,16 @@ from dataclasses import dataclass
 
 __all__ = [
     'P7ParseError', 'SignerCertificate', 'load_signer_certificate',
-    'normalize_public_key', 'public_key_matches', 'summarize',
+    'normalize_public_key', 'public_key_matches', 'summarize', 'normalize_signed_data',
 ]
 
 OID_NAMES = {
     '2.5.4.3': 'CN', '2.5.4.6': 'C', '2.5.4.7': 'L', '2.5.4.8': 'ST',
     '2.5.4.10': 'O', '2.5.4.11': 'OU', '1.2.840.113549.1.9.1': 'E',
 }
-OID_SM2 = '1.2.156.10197.1.301'
+OID_SM2 = '1.2.156.10197.1.301'            # SM2 算法（曲线）OID，部分 UKey 插件误用在 SignerInfo 上
+OID_SM2_SIGN = '1.2.156.10197.1.301.1'     # GM/T 0010 规定的 SignerInfo signatureAlgorithm
+OID_SM3_WITH_SM2 = '1.2.156.10197.1.501'   # SM3withSM2，证书签名用
 
 
 class P7ParseError(ValueError):
@@ -90,6 +92,24 @@ def _encode_length(n):
 def _encode(node):
     body = b''.join(_encode(c) for c in node.children) if node.constructed else node.value
     return bytes([node.tag]) + _encode_length(len(body)) + body
+
+
+def _oid_encode(dotted):
+    parts = [int(x) for x in dotted.split('.')]
+    out = [40 * parts[0] + parts[1]]
+    for part in parts[2:]:
+        chunk = [part & 0x7F]
+        part >>= 7
+        while part:
+            chunk.append(0x80 | (part & 0x7F))
+            part >>= 7
+        out.extend(reversed(chunk))
+    return bytes(out)
+
+
+def _der_int_bytes(value):
+    raw = value.to_bytes((value.bit_length() + 7) // 8 or 1, 'big')
+    return b'\x00' + raw if raw[0] & 0x80 else raw
 
 
 def _oid(raw):
@@ -215,6 +235,41 @@ def load_signer_certificate(p7_der):
         if int(cert.serial_hex, 16) == signer_serial:
             return cert
     raise P7ParseError('signer certificate not found in P7 certificate set')
+
+
+def normalize_signed_data(p7_der):
+    """
+    按 GM/T 0010 规范化 SignerInfo，返回 (P7 DER, 变更说明列表)；无需变更时原样返回。
+
+    现场 Windows 版 UKey 插件产出的 P7 把 signatureAlgorithm 写成 SM2 算法 OID 1.2.156.10197.1.301，
+    加密平台按该 OID 把签名值当 64 字节裸 r||s 处理，拿到 DER 后密码机报 1015 无效输入；
+    Mac 版插件写的是 1.2.156.10197.1.301.1，平台正常验签。这里统一成 .301.1，签名值统一成 DER SEQUENCE{r,s}。
+    signatureAlgorithm 和签名值的编码都不在签名覆盖范围内，证书与被签内容一字节不动。
+    """
+    changes = []
+    try:
+        root = _parse(bytes(p7_der))
+        signed = root.children[1].children[0]
+        signer_infos = next(c for c in signed.children[3:] if c.tag == 0x31)
+        for signer_info in signer_infos.children:
+            rest = signer_info.children[3:]
+            if rest and rest[0].tag == 0xA0:
+                rest = rest[1:]
+            sig_alg, signature = rest[0], rest[1]
+            oid = _oid(sig_alg.children[0].value)
+            if oid in (OID_SM2, OID_SM3_WITH_SM2):
+                sig_alg.children = [_Node(0x06, _oid_encode(OID_SM2_SIGN))] + sig_alg.children[1:]
+                changes.append('signatureAlgorithm {} -> {}'.format(oid, OID_SM2_SIGN))
+            value = signature.value
+            if len(value) == 64 and value[:1] != b'\x30':
+                r, s = int.from_bytes(value[:32], 'big'), int.from_bytes(value[32:], 'big')
+                signature.value = _encode(_Node(0x30, children=[_Node(0x02, _der_int_bytes(r)), _Node(0x02, _der_int_bytes(s))]))
+                changes.append('signature raw r||s -> DER SEQUENCE{r,s}')
+    except Exception as e:  # noqa: BLE001  规范化失败就原样发送，由平台给出结论
+        return bytes(p7_der), ['normalize skipped: {}: {}'.format(type(e).__name__, e)]
+    if not changes:
+        return bytes(p7_der), changes
+    return _encode(root), changes
 
 
 def summarize(p7_der):

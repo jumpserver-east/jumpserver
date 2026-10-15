@@ -16,7 +16,10 @@ import unittest
 from unittest import mock
 
 from .client import CPASClient, CPASConfigError, CPASError, CPASTransportError
-from .p7 import P7ParseError, load_signer_certificate, normalize_public_key, public_key_matches
+from .p7 import (
+    P7ParseError, load_signer_certificate, normalize_public_key, public_key_matches,
+    normalize_signed_data, summarize, OID_SM2, OID_SM2_SIGN, _parse, _encode, _oid_encode, _Node,
+)
 
 # ===== SAMPLE-BEGIN =====
 SAMPLE_MESSAGE = 'JumpServer-U013-12226002C56B29EE706EC6C1BFEEE2F6C7B6CE589D980AAF'
@@ -73,9 +76,57 @@ class P7Tests(unittest.TestCase):
             with self.assertRaises(P7ParseError):
                 load_signer_certificate(bad)
 
+    @staticmethod
+    def _signer_parts(tree):
+        signed = tree.children[1].children[0]
+        signer_info = next(c for c in signed.children[3:] if c.tag == 0x31).children[0]
+        rest = signer_info.children[3:]
+        if rest and rest[0].tag == 0xA0:
+            rest = rest[1:]
+        return rest[0], rest[1]
+
+    def test_normalize_windows_plugin_oid(self):
+        # Windows 版插件：signatureAlgorithm 写成 1.2.156.10197.1.301，规范化后应与 Mac 版产出逐字节一致
+        tree = _parse(self.p7)
+        sig_alg, _ = self._signer_parts(tree)
+        sig_alg.children = [_Node(0x06, _oid_encode(OID_SM2))]
+        windows_style = _encode(tree)
+        self.assertEqual(summarize(windows_style)['signature_algorithm_oid'], OID_SM2)
+        normalized, changes = normalize_signed_data(windows_style)
+        self.assertEqual(normalized, self.p7)
+        self.assertEqual(len(changes), 1)
+        self.assertIn(OID_SM2_SIGN, changes[0])
+
+    def test_normalize_raw_signature(self):
+        tree = _parse(self.p7)
+        _, signature = self._signer_parts(tree)
+        seq = _parse(signature.value)
+        r = int.from_bytes(seq.children[0].value, 'big', signed=True)
+        s = int.from_bytes(seq.children[1].value, 'big', signed=True)
+        signature.value = r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
+        raw_style = _encode(tree)
+        self.assertEqual(summarize(raw_style)['signature_form'], 'raw')
+        normalized, changes = normalize_signed_data(raw_style)
+        self.assertEqual(normalized, self.p7)
+        self.assertEqual(len(changes), 1)
+
+    def test_normalize_already_standard(self):
+        normalized, changes = normalize_signed_data(self.p7)
+        self.assertEqual(normalized, self.p7)
+        self.assertEqual(changes, [])
+        self.assertEqual(normalize_signed_data(b'garbage')[0], b'garbage')
+
+    def test_summarize(self):
+        info = summarize(self.p7)
+        self.assertTrue(info['detached'])
+        self.assertFalse(info['signed_attrs'])
+        self.assertEqual(info['certificates'], 1)
+        self.assertEqual(info['signature_form'], 'der')
+        self.assertEqual(info['signature_algorithm_oid'], OID_SM2_SIGN)
+        self.assertIn('error', summarize(b'garbage'))
+
     def test_rejects_p7_without_certificates(self):
         # 把证书集合 [0] 整体删掉后应报“未携带签名者证书”
-        from .p7 import _parse, _encode
         tree = _parse(self.p7)
         signed = tree.children[1].children[0]
         signed.children = [c for c in signed.children if c.tag != 0xA0]

@@ -803,26 +803,29 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
                 CertSerial=signer.serial_hex, NotBefore=signer.not_before, NotAfter=signer.not_after,
             )
 
+        # 不同版本 UKey 插件产出的 SignerInfo 编码不一致（OID、签名值形态），送平台前按 GM/T 0010 规范化
+        p7_to_send, normalized = cpas.normalize_signed_data(p7_der)
         try:
             client = cpas.CPASClient.from_settings()
-            result = client.verify_u013(challenge.encode('ascii'), p7_der)
+            result = client.verify_u013(challenge.encode('ascii'), p7_to_send)
         except cpas.CPASError as e:
             # P7 结构摘要和原文（证书+签名，均非秘密；挑战值已作废）写入日志，便于离线复现平台的拒绝
-            p7_info = cpas.p7_summary(p7_der)
+            p7_info = cpas.p7_summary(p7_to_send)
             logger.error(
-                'UKey CPAS U013 verify failed for %s: %s p7=%s challenge=%s p7_b64=%s',
-                user.username, e, p7_info, challenge, base64.b64encode(p7_der).decode('ascii'),
+                'UKey CPAS U013 verify failed for %s: %s p7=%s normalized=%s challenge=%s p7_b64=%s',
+                user.username, e, p7_info, normalized, challenge, base64.b64encode(p7_der).decode('ascii'),
             )
             self._ukey_auth_failed(
                 user, ukey_serial, ip, 'cpas_verify',
                 Error=type(e).__name__, Code=e.code, Remark=e.remark, SerialNo=e.serial_no,
-                CertSerial=signer.serial_hex, P7=p7_info,
+                CertSerial=signer.serial_hex, P7=p7_info, P7Normalized=normalized,
             )
         return {
             'Verify': 'cpas',
             'SerialNo': result.serial_no,
             'CertSerial': signer.serial_hex,
             'CertSubject': signer.subject,
+            'P7Normalized': normalized,
         }
 
     def check_user_auth(self, valid_data=None):
