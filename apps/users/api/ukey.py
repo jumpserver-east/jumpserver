@@ -1,4 +1,5 @@
 import base64
+import secrets
 import time
 
 from django.conf import settings
@@ -14,6 +15,7 @@ from common.sdk.gm import piico
 from common.sdk.gm.piico.exception import PiicoError
 from common.utils import get_request_ip_or_data
 from ..models import UKey, User
+from ..models.ukey import UKEY_CHALLENGE_SESSION_KEY, UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY
 from ..serializers import UKeySerializer
 
 
@@ -45,18 +47,26 @@ class UserUKeyViewSet(viewsets.ModelViewSet):
     permission_classes = (AllowAny,)
 
     @action(detail=False, methods=["get"], url_path="random")
-    def get_ukey_random(self, *args, **kwargs):
-        if not settings.PIICO_DEVICE_ENABLE:
+    def get_ukey_random(self, request, *args, **kwargs):
+        if settings.UKEY_CPAS_ENABLED:
+            # 加密平台验签模式不依赖本地密码卡，挑战值由系统随机源产生
+            random_bytes = secrets.token_bytes(32)
+        elif settings.PIICO_DEVICE_ENABLE:
+            device = piico.open_piico_device()
+            try:
+                random_bytes = device.generate_random(32)
+            except PiicoError as e:
+                return Response({"msg": _("Generate random failed: {}").format(e)}, status=400)
+            except Exception:
+                return Response({"msg": _("Device not initialized")}, status=400)
+        else:
             return Response({"msg": _("Piico device not enabled")}, status=400)
 
-        device = piico.open_piico_device()
-        try:
-            random_bytes = device.generate_random(32)
-            return Response({"msg": base64.b16encode(random_bytes)}, status=200)
-        except PiicoError as e:
-            return Response({"msg": _("Generate random failed: {}").format(e)}, status=400)
-        except Exception:
-            return Response({"msg": _("Device not initialized")}, status=400)
+        # 挑战值即 UKey 实际签名的原文（HEX 文本），存入 session 供验签时比对，一次性使用
+        challenge = base64.b16encode(random_bytes).decode("ascii")
+        request.session[UKEY_CHALLENGE_SESSION_KEY] = challenge
+        request.session[UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY] = time.time() + settings.AUTH_UKEY_CHALLENGE_TTL
+        return Response({"msg": challenge}, status=200)
 
     @action(detail=False, methods=["post"], url_path="pin-log")
     def pin_log(self, request, *args, **kwargs):

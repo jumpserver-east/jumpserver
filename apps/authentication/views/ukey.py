@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
@@ -20,6 +21,14 @@ class UserUKeyView(mixins.AuthMixin, FormView):
         except errors.SessionEmptyError:
             return redirect_to_guard_view("session_empty")
         return super().get(*args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # 验签后端决定浏览器端用裸签（piico）还是 detached P7（cpas）；userID 须与平台 U013 入参一致
+        cpas_enabled = settings.UKEY_CPAS_ENABLED
+        context["ukey_verify_backend"] = "cpas" if cpas_enabled else "piico"
+        context["ukey_user_id"] = settings.CPAS_UKEY_USER_ID if cpas_enabled else "1234567812345678"
+        return context
 
     def form_valid(self, form):
         ukey_token = form.cleaned_data.get("token")

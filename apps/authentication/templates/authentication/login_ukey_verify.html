@@ -54,6 +54,9 @@
     <script>
         const token = new mToken("mTokenPlugin")
         const pinLogUrl = "/api/v1/users/ukeys/pin-log/"
+        // 验签后端由 config.yml 的 UKEY_VERIFY_BACKEND 决定：piico 提交裸签，cpas 提交 detached 国密 P7
+        const UKEY_VERIFY_BACKEND = "{{ ukey_verify_backend|default:'piico'|escapejs }}"
+        const UKEY_USER_ID = "{{ ukey_user_id|default:'1234567812345678'|escapejs }}"
 
         function enumDevice() {
             let ret = 0
@@ -103,17 +106,29 @@
             }
             reportPinVerifyResult('success', device)
             let rb = get_Random()
+            if (!rb) {
+                alert("{% trans 'Failed to get challenge from server' %}")
+                return
+            }
             let container = token.SOF_EnumCertContiner().split("||");
             if (container.length === 0) {
                 alert("{% trans 'No container found, error code: ' %}" + token.SOF_GetLastError())
                 return;
             }
             token.SOF_SetDigestMethod(1);
-            token.SOF_SetUserID('1234567812345678');
+            token.SOF_SetUserID(UKEY_USER_ID);
             let raw_b64 = _Base64encode(rb)
-            let signed = token.SOF_SignData(container[0], 1, raw_b64, rb.length, 0);
-            if (signed == null)
+            let signed
+            if (UKEY_VERIFY_BACKEND === 'cpas') {
+                // 加密平台 U013 需要自带签名者证书的 detached P7（ulDetached=1），原文为挑战值文本本身
+                signed = token.SOF_SignDataToPKCS7(container[0], 1, raw_b64, 1);
+            } else {
+                signed = token.SOF_SignData(container[0], 1, raw_b64, rb.length, 0);
+            }
+            if (signed == null || typeof signed === 'number') {
                 alert("{% trans 'Signature failed, error code: ' %}" + token.SOF_GetLastError())
+                return
+            }
             let digest = token.SOF_DigestData(container[0], raw_b64, rb.length);
             if (digest == null)
                 alert("{% trans 'Data digest failed, error code: ' %}" + token.SOF_GetLastError());
@@ -131,6 +146,10 @@
                 async: false,
                 success: function (result) {
                     rb = result['msg']
+                },
+                error: function (xhr) {
+                    const body = xhr.responseJSON || {}
+                    console.error('ukey random failed', xhr.status, body.msg || xhr.responseText)
                 }
             })
             return rb

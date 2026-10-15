@@ -13840,6 +13840,10 @@ msgstr "移除 USB Key 綁定"
 msgid "Failed to load plugin, error code: "
 msgstr "載入元件失敗，錯誤碼："
 
+#: authentication/templates/authentication/login_ukey_verify.html
+msgid "Failed to get challenge from server"
+msgstr "取得伺服器挑戰值失敗"
+
 #: authentication/templates/authentication/bind_ukey.html:65
 #: authentication/templates/authentication/login_ukey.html:68
 msgid ""

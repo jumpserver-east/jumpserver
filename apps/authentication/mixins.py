@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 import base64
+import binascii
 import inspect
 import threading
 import time
@@ -27,13 +28,14 @@ from acls.models import LoginACL
 from jumpserver.settings.auth import AUTHENTICATION_BACKENDS_THIRD_PARTY
 from audits.const import ActionChoices
 from audits.utils import write_operate_log
-from common.sdk.gm import piico
+from common.sdk.gm import cpas, piico
 from common.sdk.gm.piico.exception import PiicoError
 from common.utils import (
     get_request_ip_or_data, get_request_ip, get_logger, bulk_get, FlashMessageUtil,
     text_hmac_sha256
 )
 from users.models import User
+from users.models.ukey import UKEY_CHALLENGE_SESSION_KEY, UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY
 from users.utils import LoginBlockUtil, MFABlockUtils, LoginIpBlockUtil
 from . import errors
 from .const import OTP_BIND_AFTER_MFA_SESSION_KEY
@@ -658,7 +660,7 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
     def check_user_ukey_if_need(self, user):
         if self.request.session.get("auth_ukey") and self.request.session.get("auth_ukey_username") == user.username:
             return
-        if not settings.PIICO_DEVICE_ENABLE or not settings.XPACK_ENABLED:
+        if not (settings.PIICO_DEVICE_ENABLE or settings.UKEY_CPAS_ENABLED) or not settings.XPACK_ENABLED:
             return
         try:
             if user.user_usb_key.get():
@@ -711,29 +713,19 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
             )
             raise errors.UKeyUnsetError()
 
-        try:
-            device = piico.open_piico_device()
-            device.verify_sign(user_key.u_key_public_key, digest, sign)
-        except PiicoError as e:
-            write_operate_log(
-                user=user,
-                action=ActionChoices.login,
-                resource_type='UKey',
-                resource=ukey_serial or user.username,
-                resource_id=user.id,
-                remote_addr=ip,
-                after=dict(
-                    Stage='UKey auth',
-                    Status='failed',
-                    Serial=ukey_serial,
-                    Reason='verify_sign',
-                    Error=str(e),
-                )
-            )
-            raise errors.LoginCheckKeyError()
+        if settings.UKEY_CPAS_ENABLED:
+            extra = self._verify_ukey_by_cpas(user, user_key, ukey_serial, sign, ip)
+        else:
+            extra = self._verify_ukey_by_piico(user, user_key, ukey_serial, digest, sign, ip)
 
         self.request.session["auth_ukey"] = 1
         self.request.session["auth_ukey_username"] = user.username
+        after = {
+            'Stage': 'UKey auth',
+            'Status': 'success',
+            'Serial': ukey_serial,
+        }
+        after.update(extra)
         write_operate_log(
             user=user,
             action=ActionChoices.login,
@@ -741,13 +733,91 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
             resource=ukey_serial or user.username,
             resource_id=user.id,
             remote_addr=ip,
-            after={
-                'Stage': 'UKey auth',
-                'Status': 'success',
-                'Serial': ukey_serial,
-            }
+            after=after
         )
         return True
+
+    def _ukey_auth_failed(self, user, ukey_serial, ip, reason, **extra):
+        """记录 UKey 验签失败的审计日志并终止登录。"""
+        after = dict(Stage='UKey auth', Status='failed', Reason=reason)
+        if ukey_serial:
+            after['Serial'] = ukey_serial
+        after.update({k: str(v) for k, v in extra.items() if v not in (None, '')})
+        write_operate_log(
+            user=user,
+            action=ActionChoices.login,
+            resource_type='UKey',
+            resource=ukey_serial or user.username,
+            resource_id=user.id,
+            remote_addr=ip,
+            after=after
+        )
+        raise errors.LoginCheckKeyError()
+
+    def _verify_ukey_by_piico(self, user, user_key, ukey_serial, digest, sign, ip):
+        """本地密码卡验签（原有流程）。"""
+        try:
+            device = piico.open_piico_device()
+            device.verify_sign(user_key.u_key_public_key, digest, sign)
+        except PiicoError as e:
+            self._ukey_auth_failed(user, ukey_serial, ip, 'verify_sign', Error=e)
+        return {}
+
+    def _pop_ukey_challenge(self):
+        """取出并删除 session 中的挑战值；缺失或过期返回失败原因。"""
+        session = self.request.session
+        challenge = session.pop(UKEY_CHALLENGE_SESSION_KEY, None)
+        expired_at = session.pop(UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY, None)
+        if not challenge:
+            return None, 'challenge_missing'
+        if not expired_at or expired_at < time.time():
+            return None, 'challenge_expired'
+        return str(challenge), ''
+
+    def _verify_ukey_by_cpas(self, user, user_key, ukey_serial, sign, ip):
+        """
+        加密平台 U013 验签：
+        1. 挑战值来自本次 session、一次性使用，签名原文由服务端提供，浏览器无法重放；
+        2. P7 内签名者证书公钥必须与用户绑定的 UKey 公钥一致，防止同一 CA 下他人证书登录；
+        3. 证书在有效期内；
+        4. 由加密平台完成签名和证书链验证，平台流水号写入审计日志便于对账。
+        """
+        challenge, reason = self._pop_ukey_challenge()
+        if not challenge:
+            self._ukey_auth_failed(user, ukey_serial, ip, reason)
+
+        try:
+            p7_der = base64.b64decode(''.join(str(sign).split()), validate=True)
+            signer = cpas.load_signer_certificate(p7_der)
+        except (ValueError, binascii.Error, cpas.P7ParseError) as e:
+            self._ukey_auth_failed(user, ukey_serial, ip, 'invalid_p7', Error=e)
+        if not cpas.public_key_matches(user_key.u_key_public_key, signer):
+            self._ukey_auth_failed(
+                user, ukey_serial, ip, 'cert_mismatch',
+                CertSerial=signer.serial_hex, CertSubject=signer.subject,
+            )
+        if not signer.is_valid_at():
+            self._ukey_auth_failed(
+                user, ukey_serial, ip, 'cert_expired',
+                CertSerial=signer.serial_hex, NotBefore=signer.not_before, NotAfter=signer.not_after,
+            )
+
+        try:
+            client = cpas.CPASClient.from_settings()
+            result = client.verify_u013(challenge.encode('ascii'), p7_der)
+        except cpas.CPASError as e:
+            logger.error('UKey CPAS U013 verify failed for %s: %s', user.username, e)
+            self._ukey_auth_failed(
+                user, ukey_serial, ip, 'cpas_verify',
+                Error=type(e).__name__, Code=e.code, Remark=e.remark, SerialNo=e.serial_no,
+                CertSerial=signer.serial_hex,
+            )
+        return {
+            'Verify': 'cpas',
+            'SerialNo': result.serial_no,
+            'CertSerial': signer.serial_hex,
+            'CertSubject': signer.subject,
+        }
 
     def check_user_auth(self, valid_data=None):
         # pre check

@@ -22,3 +22,8 @@ class UKey(JMSBaseModel):
 
     class Meta:
         verbose_name = _("User UKey")
+
+
+# UKey 登录挑战值在 session 中的键：random 接口生成时写入，验签时取出并删除（一次性，防重放）
+UKEY_CHALLENGE_SESSION_KEY = "ukey_challenge"
+UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY = "ukey_challenge_expired_at"

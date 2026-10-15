@@ -13818,6 +13818,10 @@ msgstr "移除USB Key绑定"
 msgid "Failed to load plugin, error code: "
 msgstr "加载控件失败，错误码："
 
+#: authentication/templates/authentication/login_ukey_verify.html
+msgid "Failed to get challenge from server"
+msgstr "获取服务端挑战值失败"
+
 #: authentication/templates/authentication/bind_ukey.html:65
 #: authentication/templates/authentication/login_ukey.html:68
 msgid ""

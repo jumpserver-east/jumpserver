@@ -837,6 +837,20 @@ class Config(dict):
 
         # UKey 严格模式，不绑定不能登录
         'SECURITY_UKEY_FORCED_MODE': True,
+        # UKey 验签后端：piico（本地密码卡验签）或 cpas（加密平台 CPAS/UAS U013 验签）
+        'UKEY_VERIFY_BACKEND': 'piico',
+        # 加密平台 CPAS 配置，UKEY_VERIFY_BACKEND=cpas 时生效，全部从 config.yml 读取
+        'CPAS_URL': '',  # 例如 http://cpas.example.com/cpas/apiServ/bigData
+        'CPAS_BIZ_SYS_ID': '',  # 平台分配给 JumpServer 的调用方系统编码（bizSysId）
+        'CPAS_CLASS_TYPE': 0,  # 科友服务类枚举，U 开头服务为 0（UnionUAS 类）
+        'CPAS_SVC_CODE_PREFIX': 'serv',  # 科友服务方法前缀
+        'CPAS_SVC_CODE_NUM': 0,  # 方法重载序号
+        'CPAS_UKEY_CERT_NAME': '',  # 用户证书直接签发 CA 在平台 certApp 下的记录名（U013 certName）
+        'CPAS_UKEY_CERT_APP': 'DC',  # U013 certApp
+        'CPAS_UKEY_USER_ID': '1234567812345678',  # SM2 签名 userID，须与 UKey 插件 SOF_SetUserID 一致
+        'CPAS_CONNECT_TIMEOUT': 5,  # 秒
+        'CPAS_READ_TIMEOUT': 10,  # 秒
+        'CPAS_VERIFY_SSL': True,
 
         'REMOTE_APP_STORE_URL': 'https://apps.fit2cloud.com/jumpserver',
         'LANGUAGES_SUPPORTED': '',

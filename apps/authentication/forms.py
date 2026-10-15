@@ -84,4 +84,5 @@ def get_user_login_form_cls(*, captcha=False):
 
 
 class UserUKeyForm(forms.Form):
-    token = forms.CharField(label=_('Ukey Token'), max_length=1024, required=True)
+    # cpas 模式下 token 第三段是 Base64 的国密 P7（只带用户证书也有 1000+ 字符），上限放宽
+    token = forms.CharField(label=_('Ukey Token'), max_length=8192, required=True)
