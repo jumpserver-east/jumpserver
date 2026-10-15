@@ -35,7 +35,7 @@ from common.utils import (
     text_hmac_sha256
 )
 from users.models import User
-from users.models.ukey import UKEY_CHALLENGE_SESSION_KEY, UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY
+from users.models.ukey import ukey_challenge_cache_key
 from users.utils import LoginBlockUtil, MFABlockUtils, LoginIpBlockUtil
 from . import errors
 from .const import OTP_BIND_AFTER_MFA_SESSION_KEY
@@ -764,20 +764,21 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
         return {}
 
     def _pop_ukey_challenge(self):
-        """取出并删除 session 中的挑战值；缺失或过期返回失败原因。"""
-        session = self.request.session
-        challenge = session.pop(UKEY_CHALLENGE_SESSION_KEY, None)
-        expired_at = session.pop(UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY, None)
-        if not challenge:
+        """取出并删除缓存中按 session key 绑定的挑战值；缺失或已过期（缓存 TTL）返回失败原因。"""
+        session_key = self.request.session.session_key
+        if not session_key:
             return None, 'challenge_missing'
-        if not expired_at or expired_at < time.time():
-            return None, 'challenge_expired'
+        key = ukey_challenge_cache_key(session_key)
+        challenge = cache.get(key)
+        cache.delete(key)
+        if not challenge:
+            return None, 'challenge_missing_or_expired'
         return str(challenge), ''
 
     def _verify_ukey_by_cpas(self, user, user_key, ukey_serial, sign, ip):
         """
         加密平台 U013 验签：
-        1. 挑战值来自本次 session、一次性使用，签名原文由服务端提供，浏览器无法重放；
+        1. 挑战值由服务端生成、按 session key 存缓存、一次性使用，签名原文由服务端提供，浏览器无法重放；
         2. P7 内签名者证书公钥必须与用户绑定的 UKey 公钥一致，防止同一 CA 下他人证书登录；
         3. 证书在有效期内；
         4. 由加密平台完成签名和证书链验证，平台流水号写入审计日志便于对账。

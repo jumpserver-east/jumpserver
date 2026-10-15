@@ -3,6 +3,7 @@ import secrets
 import time
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -15,7 +16,7 @@ from common.sdk.gm import piico
 from common.sdk.gm.piico.exception import PiicoError
 from common.utils import get_request_ip_or_data
 from ..models import UKey, User
-from ..models.ukey import UKEY_CHALLENGE_SESSION_KEY, UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY
+from ..models.ukey import ukey_challenge_cache_key
 from ..serializers import UKeySerializer
 
 
@@ -62,10 +63,12 @@ class UserUKeyViewSet(viewsets.ModelViewSet):
         else:
             return Response({"msg": _("Piico device not enabled")}, status=400)
 
-        # 挑战值即 UKey 实际签名的原文（HEX 文本），存入 session 供验签时比对，一次性使用
+        # 挑战值即 UKey 实际签名的原文（HEX 文本），按 session key 存入缓存供验签时比对，一次性使用。
+        # 不能放 session：并发的 pin-log 等请求在 SESSION_SAVE_EVERY_REQUEST 下会把旧 session 写回，覆盖掉挑战值。
         challenge = base64.b16encode(random_bytes).decode("ascii")
-        request.session[UKEY_CHALLENGE_SESSION_KEY] = challenge
-        request.session[UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY] = time.time() + settings.AUTH_UKEY_CHALLENGE_TTL
+        if not request.session.session_key:
+            request.session.save()
+        cache.set(ukey_challenge_cache_key(request.session.session_key), challenge, settings.AUTH_UKEY_CHALLENGE_TTL)
         return Response({"msg": challenge}, status=200)
 
     @action(detail=False, methods=["post"], url_path="pin-log")

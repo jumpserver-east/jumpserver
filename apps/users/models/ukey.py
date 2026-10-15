@@ -24,6 +24,11 @@ class UKey(JMSBaseModel):
         verbose_name = _("User UKey")
 
 
-# UKey 登录挑战值在 session 中的键：random 接口生成时写入，验签时取出并删除（一次性，防重放）
-UKEY_CHALLENGE_SESSION_KEY = "ukey_challenge"
-UKEY_CHALLENGE_EXPIRED_AT_SESSION_KEY = "ukey_challenge_expired_at"
+# UKey 登录挑战值放在缓存里，按 session key 绑定：random 接口生成时写入，验签时取出并删除（一次性，防重放）。
+# 不放 session 的原因：SESSION_SAVE_EVERY_REQUEST 下并发的 API 请求（如 pin-log）会把各自加载的旧 session 整份写回，
+# 导致刚写入的挑战值被覆盖丢失。
+UKEY_CHALLENGE_CACHE_KEY_PREFIX = "ukey_challenge"
+
+
+def ukey_challenge_cache_key(session_key):
+    return "{}:{}".format(UKEY_CHALLENGE_CACHE_KEY_PREFIX, session_key)
