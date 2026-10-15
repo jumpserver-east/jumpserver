@@ -8,6 +8,8 @@ LOG_DIR = os.path.join(PROJECT_DIR, 'data', 'logs')
 JUMPSERVER_LOG_FILE = os.path.join(LOG_DIR, 'jumpserver.log')
 DRF_EXCEPTION_LOG_FILE = os.path.join(LOG_DIR, 'drf_exception.log')
 UNEXPECTED_EXCEPTION_LOG_FILE = os.path.join(LOG_DIR, 'unexpected_exception.log')
+# UKey 登录取证日志：每次 UKey 验签一行 JSON（签名原文、证书、签名值、P7、U013 报文），供审计取证
+UKEY_EVIDENCE_LOG_FILE = os.path.join(LOG_DIR, 'ukey_evidence.log')
 GUNICORN_LOG_FILE = os.path.join(LOG_DIR, 'gunicorn.log')
 LOG_LEVEL = CONFIG.LOG_LEVEL
 
@@ -70,6 +72,14 @@ LOGGING = {
             'formatter': 'exception',
             'filename': UNEXPECTED_EXCEPTION_LOG_FILE,
         },
+        'ukey_evidence': {
+            'encoding': 'utf8',
+            'level': 'INFO',
+            'class': 'jumpserver.rewriting.logging.DailyTimedRotatingFileHandler',
+            'when': 'midnight',
+            'formatter': 'main',
+            'filename': UKEY_EVIDENCE_LOG_FILE,
+        },
         'syslog': {
             'level': 'INFO',
             'class': 'logging.NullHandler',
@@ -103,6 +113,11 @@ LOGGING = {
         'unexpected_exception': {
             'handlers': ['unexpected_exception'],
             'level': LOG_LEVEL,
+        },
+        'ukey.evidence': {
+            'handlers': ['ukey_evidence'],
+            'level': 'INFO',
+            'propagate': False,
         },
         'django_auth_ldap': {
             'handlers': ['console', 'file'],

@@ -18,7 +18,7 @@ from unittest import mock
 from .client import CPASClient, CPASConfigError, CPASError, CPASTransportError
 from .p7 import (
     P7ParseError, load_signer_certificate, normalize_public_key, public_key_matches,
-    normalize_signed_data, summarize, OID_SM2, OID_SM2_SIGN, _parse, _encode, _oid_encode, _Node,
+    normalize_signed_data, summarize, signature_values, OID_SM2, OID_SM2_SIGN, _parse, _encode, _oid_encode, _Node,
 )
 
 # ===== SAMPLE-BEGIN =====
@@ -115,6 +115,17 @@ class P7Tests(unittest.TestCase):
         self.assertEqual(normalized, self.p7)
         self.assertEqual(changes, [])
         self.assertEqual(normalize_signed_data(b'garbage')[0], b'garbage')
+
+    def test_signature_values(self):
+        values = signature_values(self.p7)
+        self.assertEqual(values['form'], 'der')
+        self.assertEqual(len(values['r_hex']), 64)
+        self.assertEqual(len(values['s_hex']), 64)
+        # DER 形式应与 P7 内原始签名值一致
+        tree = _parse(self.p7)
+        _, signature = self._signer_parts(tree)
+        self.assertEqual(values['der_hex'], signature.value.hex().upper())
+        self.assertIn('error', signature_values(b'garbage'))
 
     def test_summarize(self):
         info = summarize(self.p7)
@@ -227,6 +238,11 @@ class ClientVerifyTests(unittest.TestCase):
         self.assertEqual(request['serialNo'], result.serial_no)
         self.assertEqual(request['svcCode'], 'U013')
         self.assertEqual(request['businessData']['dataType'], '1')
+        # 取证需要：返回值带完整请求报文、HTTP 状态、响应原文和耗时
+        self.assertEqual(result.request, request)
+        self.assertEqual(result.http_status, 200)
+        self.assertIn('responseCode', result.response_text)
+        self.assertGreaterEqual(result.elapsed_ms, 0)
 
     def test_string_response_code_is_tolerated(self):
         transport = FakeTransport(*_ok_response(responseCode='0'))
@@ -241,6 +257,7 @@ class ClientVerifyTests(unittest.TestCase):
         self.assertIn('奇偶', ctx.exception.remark)
         self.assertEqual(len(ctx.exception.serial_no), 32)
         self.assertNotIsInstance(ctx.exception, CPASTransportError)
+        self.assertEqual(ctx.exception.request['serialNo'], ctx.exception.serial_no)
 
     def test_missing_field_code(self):
         text = json.dumps({'responseRemark': '[certName] in field [body/certName] does not exist', 'responseCode': 10014})

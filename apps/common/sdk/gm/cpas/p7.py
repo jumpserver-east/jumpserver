@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 __all__ = [
     'P7ParseError', 'SignerCertificate', 'load_signer_certificate',
-    'normalize_public_key', 'public_key_matches', 'summarize', 'normalize_signed_data',
+    'normalize_public_key', 'public_key_matches', 'summarize', 'normalize_signed_data', 'signature_values',
 ]
 
 OID_NAMES = {
@@ -270,6 +270,27 @@ def normalize_signed_data(p7_der):
     if not changes:
         return bytes(p7_der), changes
     return _encode(root), changes
+
+
+def signature_values(p7_der):
+    """SignerInfo 签名值的 r、s（64 位 HEX）与 DER 形式，用于登录取证日志；解析失败返回 error 字段。"""
+    try:
+        root = _parse(bytes(p7_der))
+        signed = root.children[1].children[0]
+        signer_info = next(c for c in signed.children[3:] if c.tag == 0x31).children[0]
+        rest = signer_info.children[3:]
+        if rest and rest[0].tag == 0xA0:
+            rest = rest[1:]
+        value = rest[1].value
+        if len(value) == 64 and value[:1] != b'\x30':
+            r, s, form = int.from_bytes(value[:32], 'big'), int.from_bytes(value[32:], 'big'), 'raw-rs'
+        else:
+            seq = _parse(value)
+            r, s, form = _int(seq.children[0]), _int(seq.children[1]), 'der'
+        der = _encode(_Node(0x30, children=[_Node(0x02, _der_int_bytes(r)), _Node(0x02, _der_int_bytes(s))]))
+        return {'r_hex': format(r, '064X'), 's_hex': format(s, '064X'), 'der_hex': der.hex().upper(), 'form': form}
+    except Exception as e:  # noqa: BLE001
+        return {'error': '{}: {}'.format(type(e).__name__, e)}
 
 
 def summarize(p7_der):

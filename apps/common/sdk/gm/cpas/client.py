@@ -13,6 +13,7 @@ import base64
 import binascii
 import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -28,11 +29,12 @@ MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 class CPASError(Exception):
     """平台返回非 0 响应码，或请求无法完成。"""
 
-    def __init__(self, message, code=None, remark=None, serial_no=None):
+    def __init__(self, message, code=None, remark=None, serial_no=None, request=None):
         super().__init__(message)
         self.code = code
         self.remark = remark
         self.serial_no = serial_no
+        self.request = request
 
     def __str__(self):
         parts = [super().__str__()]
@@ -58,7 +60,11 @@ class U013Result:
     serial_no: str
     code: int
     remark: str = ''
-    data: dict = field(default_factory=dict)
+    data: dict = field(default_factory=dict)          # 响应 JSON
+    request: dict = field(default_factory=dict)       # 发出的完整请求报文（取证用）
+    http_status: int = 0
+    response_text: str = ''
+    elapsed_ms: int = 0
 
 
 def _as_bytes(value):
@@ -169,21 +175,23 @@ class CPASClient:
         request = self.build_request(self.build_u013_business_data(message, p7_der))
         serial_no = request['serialNo']
         body = json.dumps(request).encode('utf-8')
+        started = time.monotonic()
         try:
             status, text = self._transport(self.url, body)
         except CPASError:
             raise
         except Exception as e:  # noqa: BLE001  网络层任何异常都按传输错误处理
             logger.error('CPAS U013 request failed: serialNo=%s error=%s', serial_no, e)
-            raise CPASTransportError('CPAS request failed: {}'.format(e), serial_no=serial_no)
+            raise CPASTransportError('CPAS request failed: {}'.format(e), serial_no=serial_no, request=request)
+        elapsed_ms = round((time.monotonic() - started) * 1000)
 
         try:
             document = json.loads(text)
         except (TypeError, ValueError):
             logger.error('CPAS U013 non-JSON response: serialNo=%s http=%s body=%r', serial_no, status, text[:500])
-            raise CPASTransportError('CPAS response is not JSON', code=None, remark=text[:200], serial_no=serial_no)
+            raise CPASTransportError('CPAS response is not JSON', code=None, remark=text[:200], serial_no=serial_no, request=request)
         if not isinstance(document, dict):
-            raise CPASTransportError('CPAS response is not an object', serial_no=serial_no)
+            raise CPASTransportError('CPAS response is not an object', serial_no=serial_no, request=request)
         code = document.get('responseCode')
         remark = document.get('responseRemark')
         remark = '' if remark is None else str(remark)
@@ -191,13 +199,14 @@ class CPASClient:
             code = int(code.strip())
         if status != 200:
             logger.error('CPAS U013 HTTP %s: serialNo=%s code=%s remark=%s', status, serial_no, code, remark)
-            raise CPASTransportError('CPAS HTTP {}'.format(status), code=code, remark=remark, serial_no=serial_no)
+            raise CPASTransportError('CPAS HTTP {}'.format(status), code=code, remark=remark, serial_no=serial_no, request=request)
         if not isinstance(code, int):
-            raise CPASTransportError('CPAS responseCode missing or invalid', code=code, remark=remark, serial_no=serial_no)
+            raise CPASTransportError('CPAS responseCode missing or invalid', code=code, remark=remark, serial_no=serial_no, request=request)
         if code != 0:
             logger.warning('CPAS U013 rejected: serialNo=%s code=%s remark=%s', serial_no, code, remark)
-            raise CPASError('CPAS U013 verify failed', code=code, remark=remark, serial_no=serial_no)
-        return U013Result(serial_no=serial_no, code=0, remark=remark, data=document)
+            raise CPASError('CPAS U013 verify failed', code=code, remark=remark, serial_no=serial_no, request=request)
+        return U013Result(serial_no=serial_no, code=0, remark=remark, data=document, request=request,
+                          http_status=status, response_text=text, elapsed_ms=elapsed_ms)
 
     def _requests_transport(self, url, body):
         import requests  # JumpServer 自带；延迟导入便于无 Django/requests 环境下跑单元测试
