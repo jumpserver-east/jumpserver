@@ -807,11 +807,16 @@ class AuthMixin(CommonMixin, AuthPreCheckMixin, AuthACLMixin, AuthFaceMixin, MFA
             client = cpas.CPASClient.from_settings()
             result = client.verify_u013(challenge.encode('ascii'), p7_der)
         except cpas.CPASError as e:
-            logger.error('UKey CPAS U013 verify failed for %s: %s', user.username, e)
+            # P7 结构摘要和原文（证书+签名，均非秘密；挑战值已作废）写入日志，便于离线复现平台的拒绝
+            p7_info = cpas.p7_summary(p7_der)
+            logger.error(
+                'UKey CPAS U013 verify failed for %s: %s p7=%s challenge=%s p7_b64=%s',
+                user.username, e, p7_info, challenge, base64.b64encode(p7_der).decode('ascii'),
+            )
             self._ukey_auth_failed(
                 user, ukey_serial, ip, 'cpas_verify',
                 Error=type(e).__name__, Code=e.code, Remark=e.remark, SerialNo=e.serial_no,
-                CertSerial=signer.serial_hex,
+                CertSerial=signer.serial_hex, P7=p7_info,
             )
         return {
             'Verify': 'cpas',

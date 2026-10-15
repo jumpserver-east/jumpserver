@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 __all__ = [
     'P7ParseError', 'SignerCertificate', 'load_signer_certificate',
-    'normalize_public_key', 'public_key_matches',
+    'normalize_public_key', 'public_key_matches', 'summarize',
 ]
 
 OID_NAMES = {
@@ -215,6 +215,45 @@ def load_signer_certificate(p7_der):
         if int(cert.serial_hex, 16) == signer_serial:
             return cert
     raise P7ParseError('signer certificate not found in P7 certificate set')
+
+
+def summarize(p7_der):
+    """
+    P7 结构摘要（不含私密信息），写入审计日志用于定位平台拒绝的原因：
+    是否 detached、有无 signedAttrs、证书数量、签名值形态与长度、各 OID。解析失败时返回 error 字段。
+    """
+    try:
+        root = _parse(bytes(p7_der))
+        signed = root.children[1].children[0]
+        content_info = signed.children[2]
+        certs = signer_infos = None
+        for child in signed.children[3:]:
+            if child.tag == 0xA0:
+                certs = child
+            elif child.tag == 0x31:
+                signer_infos = child
+        signer_info = signer_infos.children[0]
+        rest = signer_info.children[3:]
+        signed_attrs = bool(rest) and rest[0].tag == 0xA0
+        if signed_attrs:
+            rest = rest[1:]
+        sig_alg, signature = rest[0], rest[1]
+        return {
+            'bytes': len(p7_der),
+            'content_type_oid': _oid(root.children[0].value),
+            'data_oid': _oid(content_info.children[0].value),
+            'detached': len(content_info.children) == 1,
+            'certificates': len(certs.children) if certs else 0,
+            'signer_infos': len(signer_infos.children),
+            'signed_attrs': signed_attrs,
+            'digest_algorithm_oid': _oid(signer_info.children[2].children[0].value),
+            'signature_algorithm_oid': _oid(sig_alg.children[0].value),
+            'signature_bytes': len(signature.value),
+            'signature_form': 'der' if signature.value[:1] == b'\x30' else 'raw',
+            'sha256': hashlib.sha256(bytes(p7_der)).hexdigest(),
+        }
+    except Exception as e:  # noqa: BLE001  摘要只用于诊断，任何异常都不能影响登录流程
+        return {'error': '{}: {}'.format(type(e).__name__, e)}
 
 
 def normalize_public_key(value):
