@@ -37,10 +37,10 @@ def issue_repair_codes(ticket, assignees):
 
 
 @transaction.atomic
-def redeem_repair_code(applicant, code):
+def redeem_repair_code(applicant, ticket_id, code):
     digest = code_digest(applicant.id, code)
     candidate = TicketRepairCode.objects.filter(
-        digest=digest, ticket__applicant=applicant, used_at__isnull=True
+        ticket_id=ticket_id, digest=digest, ticket__applicant=applicant, used_at__isnull=True
     ).values_list('ticket_id', flat=True).first()
     invalid = _('The repair code is invalid, expired, or already used.')
     if not candidate:

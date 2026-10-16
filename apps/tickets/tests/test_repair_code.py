@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from unittest.mock import patch
 from types import SimpleNamespace
+from uuid import uuid4
 
 from django.core.cache import cache
 from django.core import mail
@@ -64,7 +65,7 @@ class RepairCodeTestCase(TestCase):
             ticket=self.ticket, approver=self.other,
             digest=code_digest(self.applicant.id, '654321'),
         )
-        ticket = redeem_repair_code(self.applicant, '012345')
+        ticket = redeem_repair_code(self.applicant, self.ticket.id, '012345')
         self.assertEqual(ticket.state, TicketState.approved)
         self.assertEqual(ticket.status, TicketStatus.closed)
         permission = AssetPermission.objects.get(id=self.ticket.id)
@@ -77,14 +78,14 @@ class RepairCodeTestCase(TestCase):
         self.assertFalse(ticket.repair_codes.filter(used_at__isnull=True).exists())
         for code in ['012345', '654321']:
             with self.assertRaises(ValidationError):
-                redeem_repair_code(self.applicant, code)
+                redeem_repair_code(self.applicant, self.ticket.id, code)
         self.assertEqual(AssetPermission.objects.filter(id=ticket.id).count(), 1)
         self.assertTrue(ticket.comments.filter(user=self.applicant, body__contains='repair code').exists())
 
     def test_wrong_code_and_other_user_do_not_grant(self):
         for user, code in [(self.applicant, '999999'), (self.other, '012345')]:
             with self.assertRaises(ValidationError):
-                redeem_repair_code(user, code)
+                redeem_repair_code(user, self.ticket.id, code)
         self.assertFalse(AssetPermission.objects.filter(id=self.ticket.id).exists())
         self.credential.refresh_from_db()
         self.assertIsNone(self.credential.used_at)
@@ -93,19 +94,19 @@ class RepairCodeTestCase(TestCase):
         for state in [TicketState.closed, TicketState.rejected]:
             ApplyAssetTicket.objects.filter(pk=self.ticket.pk).update(state=state, status=TicketStatus.closed)
             with self.assertRaises(ValidationError):
-                redeem_repair_code(self.applicant, '012345')
+                redeem_repair_code(self.applicant, self.ticket.id, '012345')
         ApplyAssetTicket.objects.filter(pk=self.ticket.pk).update(
             state=TicketState.pending, status=TicketStatus.open,
             apply_date_expired=timezone.now() - timedelta(seconds=1),
         )
         with self.assertRaises(ValidationError):
-            redeem_repair_code(self.applicant, '012345')
+            redeem_repair_code(self.applicant, self.ticket.id, '012345')
         self.assertFalse(AssetPermission.objects.filter(id=self.ticket.id).exists())
 
     def test_deleted_requested_assets_do_not_complete_ticket(self):
         self.ticket.apply_assets.clear()
         with self.assertRaises(ValidationError):
-            redeem_repair_code(self.applicant, '012345')
+            redeem_repair_code(self.applicant, self.ticket.id, '012345')
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.state, TicketState.pending)
 
@@ -113,7 +114,7 @@ class RepairCodeTestCase(TestCase):
         manager_class = AssetPermission.users.related_manager_cls
         with patch.object(manager_class, 'add', side_effect=RuntimeError('binding failed')):
             with self.assertRaises(RuntimeError):
-                redeem_repair_code(self.applicant, '012345')
+                redeem_repair_code(self.applicant, self.ticket.id, '012345')
         self.ticket.refresh_from_db()
         self.credential.refresh_from_db()
         self.assertEqual(self.ticket.state, TicketState.pending)
@@ -157,6 +158,9 @@ class RepairCodeTestCase(TestCase):
         messages = message.get_backend_msg_mapper([BACKEND.SITE_MSG])
         self.assertIn(BACKEND.EMAIL, messages)
         self.assertIn('012345', messages[BACKEND.EMAIL]['message'])
+        self.assertIn('mail-topline', messages[BACKEND.EMAIL]['message'])
+        self.assertIn('repair-code-focus', messages[BACKEND.EMAIL]['message'])
+        self.assertIn('field-list', messages[BACKEND.EMAIL]['message'])
         self.assertNotIn('012345', messages[BACKEND.SITE_MSG]['message'])
         self.assertIsNone(message.get_ticket_approval_url())
         cc_message = TicketUpdatedToCcUserMessage(self.other, self.ticket).get_html_msg()['message']
@@ -198,7 +202,7 @@ class RepairCodeTestCase(TestCase):
                     self.assertIn('135790', messages[BACKEND.EMAIL]['message'])
                     self.assertNotIn('135790', messages[BACKEND.SITE_MSG]['message'])
         self.assertFalse(AssetPermission.objects.filter(id=serializer.instance.id).exists())
-        ticket = redeem_repair_code(self.applicant, '135790')
+        ticket = redeem_repair_code(self.applicant, serializer.instance.id, '135790')
         self.assertEqual(ticket.id, serializer.instance.id)
         self.assertTrue(AssetPermission.objects.get(id=ticket.id).users.filter(id=self.applicant.id).exists())
 
@@ -221,13 +225,15 @@ class RepairCodeTestCase(TestCase):
 
     def test_code_format_preserves_leading_zero_and_rejects_non_digits(self):
         for code in ['12345', '1234567', '１２３４５６', '123456\n', ' 123456']:
-            self.assertFalse(RepairCodeSerializer(data={'code': code}).is_valid())
-        serializer = RepairCodeSerializer(data={'code': '012345'})
+            self.assertFalse(RepairCodeSerializer(data={'ticket': str(self.ticket.id), 'code': code}).is_valid())
+        serializer = RepairCodeSerializer(data={'ticket': str(self.ticket.id), 'code': '012345'})
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data['code'], '012345')
 
-    def api_request(self, code, user=None):
-        request = APIRequestFactory().post('/redeem-code/', {'code': code}, format='json')
+    def api_request(self, code, user=None, **overrides):
+        data = {'code': code, 'ticket': str(self.ticket.id)}
+        data.update(overrides)
+        request = APIRequestFactory().post('/redeem-code/', data, format='json')
         if user:
             force_authenticate(request, user)
         with transaction.atomic():
@@ -244,6 +250,73 @@ class RepairCodeTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['id'], str(self.ticket.id))
         self.assertEqual(response.data['state'], 'approved')
+
+    def test_api_rejects_code_for_another_ticket_without_consuming_it(self):
+        second_ticket = ApplyAssetTicket.objects.create(
+            title='Another repair request', applicant=self.applicant, org_id=self.org.id,
+            apply_accounts=['root'], apply_date_start=self.ticket.apply_date_start,
+            apply_date_expired=self.ticket.apply_date_expired,
+        )
+        second_ticket.apply_assets.add(self.unrequested_asset)
+        second_ticket.create_process_steps_by_assignees([self.approver])
+        second_ticket.set_rel_snapshot()
+        second_credential = TicketRepairCode.objects.create(
+            ticket=second_ticket, approver=self.approver,
+            digest=code_digest(self.applicant.id, '654321'),
+        )
+        with patch.object(ApplyAssetTicketViewSet, '_record_operate_log') as log:
+            response = self.api_request('012345', self.applicant, ticket=str(second_ticket.id))
+            self.assertEqual(response.status_code, 400)
+            log.assert_not_called()
+        self.assertFalse(AssetPermission.objects.filter(id__in=[self.ticket.id, second_ticket.id]).exists())
+        for credential in [self.credential, second_credential]:
+            credential.refresh_from_db()
+            self.assertIsNone(credential.used_at)
+        for ticket in [self.ticket, second_ticket]:
+            ticket.refresh_from_db()
+            self.assertEqual(ticket.state, TicketState.pending)
+        with patch.object(ApplyAssetTicketViewSet, '_record_operate_log'):
+            self.assertEqual(self.api_request('012345', self.applicant).status_code, 200)
+            self.assertEqual(
+                self.api_request('654321', self.applicant, ticket=str(second_ticket.id)).status_code, 200
+            )
+
+    def test_api_requires_valid_ticket_and_rejects_unknown_ticket(self):
+        for ticket_id in [None, '', 'not-a-uuid', str(uuid4())]:
+            with self.subTest(ticket=ticket_id):
+                response = self.api_request('012345', self.applicant, ticket=ticket_id)
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(AssetPermission.objects.filter(id=self.ticket.id).exists())
+        self.credential.refresh_from_db()
+        self.assertIsNone(self.credential.used_at)
+
+    def test_api_rejects_legacy_code_only_request(self):
+        request = APIRequestFactory().post('/redeem-code/', {'code': '012345'}, format='json')
+        force_authenticate(request, self.applicant)
+        with transaction.atomic():
+            response = ApplyAssetTicketViewSet.as_view(
+                {'post': 'redeem_code'}, permission_classes=[IsAuthenticated], throttle_classes=[],
+            )(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('ticket', response.data)
+        self.assertFalse(AssetPermission.objects.filter(id=self.ticket.id).exists())
+        self.credential.refresh_from_db()
+        self.assertIsNone(self.credential.used_at)
+
+    def test_api_cannot_spoof_applicant_or_use_another_users_code_on_own_ticket(self):
+        other_ticket = ApplyAssetTicket.objects.create(
+            title='Other applicant request', applicant=self.other, org_id=self.org.id,
+        )
+        for ticket_id in [self.ticket.id, other_ticket.id]:
+            response = self.api_request(
+                '012345', self.other, ticket=str(ticket_id), applicant=str(self.applicant.id),
+            )
+            self.assertEqual(response.status_code, 400)
+        self.assertFalse(AssetPermission.objects.filter(id__in=[self.ticket.id, other_ticket.id]).exists())
+        self.credential.refresh_from_db()
+        self.assertIsNone(self.credential.used_at)
+        with patch.object(ApplyAssetTicketViewSet, '_record_operate_log'):
+            self.assertEqual(self.api_request('012345', self.applicant).status_code, 200)
 
     def test_code_verification_is_rate_limited_per_applicant(self):
         request = APIRequestFactory().post('/redeem-code/')
@@ -269,7 +342,7 @@ class RepairCodeConcurrencyTestCase(TransactionTestCase):
                 user = User.objects.get(pk=self.applicant.pk)
                 barrier.wait(timeout=10)
                 try:
-                    redeem_repair_code(user, '012345')
+                    redeem_repair_code(user, self.ticket.id, '012345')
                     return 'granted'
                 except ValidationError:
                     return 'rejected'

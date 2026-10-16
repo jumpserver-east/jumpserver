@@ -203,7 +203,9 @@ class ApplyAssetTicketViewSet(TicketViewSet):
 
         serializer = serializers.RepairCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        ticket = redeem_repair_code(request.user, serializer.validated_data['code'])
+        ticket = redeem_repair_code(
+            request.user, serializer.validated_data['ticket'], serializer.validated_data['code']
+        )
         self._record_operate_log(ticket, TicketAction.approve)
         return Response({
             'id': str(ticket.id), 'serial_num': ticket.serial_num,

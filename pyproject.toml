@@ -6,6 +6,7 @@ authors = [{ name = "ibuler", email = "ibuler@qq.com" }]
 requires-python = ">=3.14"
 dependencies = [
     'aiofiles==23.1.0',
+    'requests-unixsocket==0.4.1',
     'amqp==5.1.1',
     'ansible-core',
     'ansible==9.13.0',

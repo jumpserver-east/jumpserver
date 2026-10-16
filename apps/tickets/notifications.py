@@ -50,7 +50,9 @@ class BaseTicketMessage(UserMessage):
 
     def gen_html_string(self, **other_context):
         context = {
-            'title': self.content_title, 'content': self.content,
+            'title': self.content_title,
+            'content': self.content,
+            'ticket': self.ticket,
         }
         context.update(other_context)
         message = render_to_string(

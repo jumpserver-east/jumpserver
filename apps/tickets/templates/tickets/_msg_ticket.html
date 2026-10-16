@@ -1,41 +1,272 @@
 {% load i18n %}
+<style>
+    .ticket-container {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        overflow: hidden;
+        background: #ffffff;
+        color: #1e2a27;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+        line-height: 1.5;
+    }
+
+    .ticket-container .mail-topline {
+        height: 4px;
+        background: #159b80;
+    }
+
+    .ticket-container .mail-header {
+        padding: 27px 48px 24px;
+        border-bottom: 1px solid #dbe4e1;
+        color: #7a8783;
+        font-size: 12px;
+    }
+
+    .ticket-container .wordmark {
+        color: #2d403b;
+        font-weight: 800;
+        letter-spacing: .08em;
+    }
+
+    .ticket-container .mail-body {
+        padding: 42px 48px 44px;
+    }
+
+    .ticket-container .eyebrow {
+        margin: 0;
+        color: #159b80;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+    }
+
+    .ticket-container .ticket-title {
+        margin: 13px 0 0;
+        color: #172a25;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -.035em;
+        line-height: 1.32;
+        overflow-wrap: anywhere;
+    }
+
+    .ticket-container .ticket-intro {
+        max-width: 590px;
+        margin: 13px 0 0;
+        color: #6d7a76;
+        font-size: 14px;
+        line-height: 1.75;
+    }
+
+    .ticket-container .repair-code-focus {
+        display: table;
+        width: 100%;
+        margin-top: 32px;
+        padding: 23px 0 24px;
+        border-top: 1px solid #dbe4e1;
+        border-bottom: 1px solid #dbe4e1;
+    }
+
+    .ticket-container .repair-code-state,
+    .ticket-container .repair-code-value {
+        display: table-cell;
+        vertical-align: bottom;
+    }
+
+    .ticket-container .repair-code-value {
+        text-align: right;
+    }
+
+    .ticket-container .repair-code-label {
+        color: #84918d;
+        font-size: 12px;
+    }
+
+    .ticket-container .repair-code-status {
+        margin-top: 8px;
+        color: #159b80;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .ticket-container .repair-code {
+        display: block;
+        margin-top: 7px;
+        color: #159b80;
+        font-size: 33px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        letter-spacing: .21em;
+        line-height: 1.15;
+    }
+
+    .ticket-container .repair-code-note {
+        margin: 18px 0 0;
+        color: #6d7a76;
+        font-size: 13px;
+        line-height: 1.65;
+    }
+
+    .ticket-container .ticket-section {
+        margin-top: 35px;
+    }
+
+    .ticket-container .section-title {
+        margin: 0 0 13px;
+        color: #5e706b;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .12em;
+    }
+
+    .ticket-container .field-list {
+        margin: 0;
+        padding: 0;
+        border-top: 1px solid #dbe4e1;
+        list-style: none;
+    }
+
+    .ticket-container .field-group {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        min-height: 47px;
+        margin: 0;
+        padding: 0;
+        border-bottom: 1px solid #dbe4e1;
+    }
+
+    .ticket-container .field-name,
+    .ticket-container .field-value {
+        display: block;
+        padding: 14px 0;
+        font-size: 14px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+    }
+
+    .ticket-container .field-name {
+        color: #84918d;
+        font-size: 12px;
+        font-weight: 400;
+    }
+
+    .ticket-container .field-value {
+        color: #1e2a27;
+    }
+
+    .ticket-container .field-name strong {
+        font-weight: 400;
+    }
+
+    .ticket-container .action-group {
+        margin-top: 28px;
+        font-size: 13px;
+        line-height: 1.8;
+    }
+
+    .ticket-container .action-group a {
+        color: #159b80;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .ticket-container .mail-footer {
+        padding: 17px 48px;
+        border-top: 1px solid #dbe4e1;
+        background: #fafcfb;
+        color: #8a9692;
+        font-size: 11px;
+        line-height: 1.6;
+    }
+
+    @media (max-width: 680px) {
+        .ticket-container .mail-header,
+        .ticket-container .mail-body,
+        .ticket-container .mail-footer {
+            padding-right: 22px;
+            padding-left: 22px;
+        }
+
+        .ticket-container .repair-code-focus {
+            display: block;
+        }
+
+        .ticket-container .repair-code-state,
+        .ticket-container .repair-code-value {
+            display: block;
+            text-align: left;
+        }
+
+        .ticket-container .repair-code-value {
+            margin-top: 23px;
+        }
+
+        .ticket-container .field-group {
+            grid-template-columns: 104px minmax(0, 1fr);
+        }
+
+        .ticket-container .ticket-title {
+            font-size: 26px;
+        }
+    }
+</style>
+
 <div class="ticket-container">
-    <h1 class="title">
-        {{ title | safe }}
-    </h1>
-    <hr>
-    {% if repair_code %}
-        <div>
-            <h2>{% trans 'Repair code' %}</h2>
-            <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">{{ repair_code }}</p>
-            <p>{% trans 'If you agree to this request, give this code to the applicant. The applicant can enter it in My tickets to obtain the requested asset permissions.' %}</p>
-            <p>{% trans 'This code is bound to this ticket, can only be used by its applicant once, and expires at:' %} {{ repair_code_expired }}</p>
-        </div>
-        <hr>
-    {% endif %}
-    <div>
+    <div class="mail-topline"></div>
+    <div class="mail-header">
+        <span class="wordmark">JUMPSERVER</span>
+    </div>
+    <div class="mail-body">
+        <p class="eyebrow">{{ ticket.get_type_display }}</p>
+        <h1 class="ticket-title">{{ ticket.title }}</h1>
+        <p class="ticket-intro">{{ title }}</p>
+
+        {% if repair_code %}
+            <div class="repair-code-focus">
+                <div class="repair-code-state">
+                    <div class="repair-code-label">{% trans 'Status' %}</div>
+                    <div class="repair-code-status">{{ ticket.get_state_display }}</div>
+                </div>
+                <div class="repair-code-value">
+                    <div class="repair-code-label">{% trans 'Repair code' %}</div>
+                    <span class="repair-code">{{ repair_code }}</span>
+                </div>
+            </div>
+            <p class="repair-code-note">
+        {% trans 'This code is bound to this ticket, can only be used by its applicant once, and expires at:' %}
+                <strong>{{ repair_code_expired }}</strong>。
+            </p>
+        {% endif %}
+
         {% for child in content %}
-            <div class="card">
-                <h2 class="child_title">{{ child.title }}</h2>
+            <div class="ticket-section">
+                <div class="section-title">{{ child.title }}</div>
                 <ul class="field-list">
                     {% for item in child.content %}
-                        <li class="field-group"><strong class="field-name">{{ item.title }}:</strong> <span class="field-value">{{ item.value | truncatechars:512 }}</span></li>
+                        <li class="field-group">
+                            <span class="field-name"><strong>{{ item.title }}</strong></span>
+                            <span class="field-value">{{ item.value|truncatechars:512 }}</span>
+                        </li>
                     {% endfor %}
                 </ul>
             </div>
-            <hr>
         {% endfor %}
-    </div>
-    <div class="action_group">
-        <a class="view-link" href="{{ ticket_detail_url }}" target="_blank" rel="noopener">
-            {% trans 'View details' %}
-        </a>
-        <br>
-        {% if ticket_approval_url %}
-            <a href="{{ ticket_approval_url }}" target="_blank" rel="noopener">
-                {% trans 'Direct approval' %}
+
+        <div class="action-group">
+            <a class="view-link" href="{{ ticket_detail_url }}" target="_blank" rel="noopener">
+                {% trans 'View details' %}
             </a>
-        {% endif %}
+            {% if ticket_approval_url %}
+                <br>
+                <a href="{{ ticket_approval_url }}" target="_blank" rel="noopener">
+                    {% trans 'Direct approval' %}
+                </a>
+            {% endif %}
+        </div>
     </div>
-    <br>
+    <div class="mail-footer">
+        {% if ticket.serial_num %}{{ ticket.serial_num }}　·　{% endif %}JumpServer
+    </div>
 </div>

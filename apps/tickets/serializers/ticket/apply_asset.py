@@ -116,6 +116,7 @@ class ApproveAssetSerializer(ApplyAssetSerializer):
 
 
 class RepairCodeSerializer(serializers.Serializer):
+    ticket = serializers.UUIDField(write_only=True, label=_('Ticket'))
     code = serializers.RegexField(
         regex=r'\A[0-9]{6}\Z', min_length=6, max_length=6,
         trim_whitespace=False, write_only=True, label=_('Repair code'),
