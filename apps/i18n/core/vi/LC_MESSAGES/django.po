@@ -14196,3 +14196,32 @@ msgstr "Giấy phép không hợp lệ"
 
 #~ msgid "Ticket already closed"
 #~ msgstr "Phiếu công việc đã đóng"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "Phương thức MFA được phép"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "Chọn một hoặc nhiều phương thức MFA mà người dùng có thể liên kết và sử dụng"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "Vui lòng chọn ít nhất một phương thức MFA"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "MFA không khả dụng"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "Không có phương thức MFA nào khả dụng. Vui lòng liên hệ quản trị viên."
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "Các phương thức MFA sau chưa được bật trong cài đặt hệ thống và không thể sử dụng: %(methods)s. Vui lòng liên hệ quản trị viên."
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "Không có phương thức MFA nào được chọn đang được bật, vui lòng bật tính năng tương ứng (chẳng hạn như SMS) trước"

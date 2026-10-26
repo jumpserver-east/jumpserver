@@ -14131,3 +14131,32 @@ msgstr "ライセンスが無効です"
 
 #~ msgid "Ticket already closed"
 #~ msgstr "チケットはすでに閉じています"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "許可する MFA 方式"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "ユーザーがバインドして使用できる MFA 方式を 1 つ以上選択してください"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "MFA 方式を少なくとも 1 つ選択してください"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "MFA は利用できません"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "利用可能な MFA 方式がありません。管理者にお問い合わせください。"
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "次の MFA 方式はシステム設定で有効になっていないため、使用できません：%(methods)s。管理者にお問い合わせください。"
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "選択した MFA 方式はいずれも有効になっていません。先に対応する機能（SMS など）を有効にしてください"

@@ -13773,3 +13773,32 @@ msgstr "许可证无效"
 
 #~ msgid "Ticket already closed"
 #~ msgstr "工单已经关闭"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "允许的 MFA 方式"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "选择用户可以绑定和使用的一种或多种 MFA 方式"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "请至少选择一种 MFA 方式"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "MFA 不可用"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "没有可用的 MFA 认证方式，请联系管理员。"
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "以下 MFA 认证方式未在系统设置中启用，暂时无法使用：%(methods)s。请联系管理员。"
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "所选的 MFA 方式均未启用，请先启用对应功能（如短信）"

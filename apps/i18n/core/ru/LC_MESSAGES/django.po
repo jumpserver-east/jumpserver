@@ -14393,3 +14393,32 @@ msgstr "Лицензия недействительна"
 
 #~ msgid "Ticket already closed"
 #~ msgstr "Заявка уже закрыта"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "Разрешённые методы МФА"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "Выберите один или несколько методов МФА, которые пользователи могут привязать и использовать"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "Выберите хотя бы один метод МФА"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "Многофакторная аутентификация недоступна"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "Нет доступных методов MFA. Обратитесь к администратору."
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "Следующие методы MFA не включены в системных настройках и не могут использоваться: %(methods)s. Обратитесь к администратору."
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "Ни один из выбранных методов MFA не включен, сначала включите соответствующую функцию (например, SMS)"

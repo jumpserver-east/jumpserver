@@ -1,7 +1,10 @@
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from acls.serializers.rules import ip_group_help_text, ip_group_child_validator
+from authentication.const import MFAType
+from common.serializers.fields import ListMultipleChoiceField
 
 __all__ = [
     'SecurityPasswordRuleSerializer', 'SecuritySessionSerializer',
@@ -135,6 +138,11 @@ class SecurityAuthSerializer(serializers.Serializer):
         ),
         required=False, label=_("Global MFA")
     )
+    SECURITY_MFA_METHODS = ListMultipleChoiceField(
+        choices=MFAType.choices, required=False,
+        label=_("Allowed MFA methods"),
+        help_text=_("Select one or more MFA methods that users can bind and use")
+    )
     SECURITY_MFA_AUTH_ENABLED_FOR_THIRD_PARTY = serializers.BooleanField(
         required=False, default=True,
         label=_('Third-party login MFA'),
@@ -194,7 +202,36 @@ class SecurityAuthSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs.get('SECURITY_MFA_AUTH') != 1:
             attrs['SECURITY_MFA_IN_LOGIN_PAGE'] = False
+        methods = attrs.get('SECURITY_MFA_METHODS')
+        if methods is not None and len(methods) == 0:
+            raise serializers.ValidationError({
+                'SECURITY_MFA_METHODS': _('Select at least one MFA method')
+            })
+        self.validate_mfa_methods_available(attrs)
         return attrs
+
+    @staticmethod
+    def validate_mfa_methods_available(attrs):
+        # Only allowing disabled methods would lock out every user with MFA enabled
+        if 'SECURITY_MFA_METHODS' not in attrs and 'SECURITY_MFA_BY_EMAIL' not in attrs:
+            return
+        from authentication.mfa.policy import get_mfa_method_status
+
+        methods = attrs.get('SECURITY_MFA_METHODS') or settings.SECURITY_MFA_METHODS or MFAType.values
+        enabled = {m['value'] for m in get_mfa_method_status() if m['enabled']}
+        # The email switch is saved together with the methods, so use the submitted value
+        by_email = attrs.get('SECURITY_MFA_BY_EMAIL')
+        if by_email is True:
+            enabled.add(MFAType.Email.value)
+        elif by_email is False:
+            enabled.discard(MFAType.Email.value)
+        if not enabled & set(methods):
+            raise serializers.ValidationError({
+                'SECURITY_MFA_METHODS': _(
+                    'None of the selected MFA methods is enabled, '
+                    'please enable the corresponding feature (such as SMS) first'
+                )
+            })
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

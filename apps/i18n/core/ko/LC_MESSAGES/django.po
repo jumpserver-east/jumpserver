@@ -14062,3 +14062,32 @@ msgstr "라이센스가 유효하지 않습니다."
 
 #~ msgid "Ticket already closed"
 #~ msgstr "작업 요청이 종료되었습니다"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "허용된 MFA 방식"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "사용자가 바인딩하고 사용할 수 있는 MFA 방식을 하나 이상 선택하세요"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "MFA 방식을 하나 이상 선택하세요"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "MFA를 사용할 수 없음"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "사용 가능한 MFA 방식이 없습니다. 관리자에게 문의하세요."
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "다음 MFA 방식은 시스템 설정에서 활성화되지 않아 사용할 수 없습니다: %(methods)s. 관리자에게 문의하세요."
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "선택한 MFA 방식이 모두 활성화되어 있지 않습니다. 먼저 해당 기능(예: SMS)을 활성화하세요"

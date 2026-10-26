@@ -14306,3 +14306,32 @@ msgstr "Licença inválida"
 
 #~ msgid "Ticket already closed"
 #~ msgstr "A ordem de serviço foi fechada"
+
+#: settings/serializers/security.py
+msgid "Allowed MFA methods"
+msgstr "Métodos MFA permitidos"
+
+#: settings/serializers/security.py
+msgid "Select one or more MFA methods that users can bind and use"
+msgstr "Selecione um ou mais métodos MFA que os usuários podem vincular e usar"
+
+#: settings/serializers/security.py
+msgid "Select at least one MFA method"
+msgstr "Selecione pelo menos um método MFA"
+
+#: authentication/mixins.py
+msgid "MFA unavailable"
+msgstr "MFA indisponível"
+
+#: authentication/mixins.py users/templates/users/mfa_setting.html
+msgid "No available MFA method. Please contact your administrator."
+msgstr "Não há nenhum método de MFA disponível. Entre em contato com o administrador."
+
+#: users/templates/users/mfa_setting.html
+#, python-format
+msgid "The following MFA methods are not enabled in system settings and cannot be used: %(methods)s. Please contact your administrator."
+msgstr "Os seguintes métodos de MFA não estão habilitados nas configurações do sistema e não podem ser usados: %(methods)s. Entre em contato com o administrador."
+
+#: settings/serializers/security.py
+msgid "None of the selected MFA methods is enabled, please enable the corresponding feature (such as SMS) first"
+msgstr "Nenhum dos métodos de MFA selecionados está habilitado; habilite primeiro o recurso correspondente (como SMS)"

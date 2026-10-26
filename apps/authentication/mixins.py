@@ -32,7 +32,7 @@ from common.utils import (
 from users.models import User
 from users.utils import LoginBlockUtil, MFABlockUtils, LoginIpBlockUtil
 from . import errors
-from .const import OTP_BIND_AFTER_MFA_SESSION_KEY
+from .const import MFAType, OTP_BIND_AFTER_MFA_SESSION_KEY
 from .signals import post_auth_success, post_auth_failed
 
 logger = get_logger(__name__)
@@ -320,11 +320,25 @@ class MFAMixin:
     get_user_from_session: Callable
     get_request_ip: Callable
 
+    def _get_mfa_bind_url(self, user):
+        # Only OTP supports enrollment before login; profile pages require authentication.
+        otp_backend = user.get_mfa_backend_by_type(MFAType.OTP.value)
+        if otp_backend:
+            return otp_backend.get_enable_url()
+        message_data = {
+            'title': _('MFA unavailable'),
+            'error': _(
+                'No available MFA method. Please contact your administrator.'
+            ),
+            'redirect_url': reverse('authentication:login') + '?admin=1',
+            'auto_redirect': False,
+        }
+        return FlashMessageUtil.gen_message_url(message_data)
+
     def _check_if_no_active_mfa(self, user):
         active_mfa_mapper = user.active_mfa_backends_mapper
         if not active_mfa_mapper:
-            set_url = reverse('authentication:user-otp-enable-start')
-            raise errors.MFAUnsetError(set_url, user, self.request)
+            raise errors.MFAUnsetError(self._get_mfa_bind_url(user), user, self.request)
 
     def _check_login_page_mfa_if_need(self, user):
         if not settings.SECURITY_MFA_IN_LOGIN_PAGE:
